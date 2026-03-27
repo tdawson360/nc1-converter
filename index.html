@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NC1 Converter - DSTV File Generator</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <header class="app-header">
+                <h1 class="app-title">NC1 Converter</h1>
+                <p class="app-subtitle">DSTV File Generator v1.12.4.1</p>
+            </header>
+            
+            <!-- Parts List (future: multiple parts) -->
+            <div class="parts-list">
+                <div class="card">
+                    <div class="card-header">Current Part</div>
+                    <div id="currentPartSummary" class="text-muted text-sm">
+                        No part defined
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="mt-4">
+                <button id="clearPart" class="btn btn-secondary btn-block">
+                    Clear Part
+                </button>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <div id="messages"></div>
+            
+            <!-- Shape Selection -->
+            <div class="card">
+                <div class="card-header">1. Select Shape</div>
+                
+                <div class="form-group">
+                    <label class="form-label">Shape Type</label>
+                    <select id="shapeType" class="form-select">
+                        <option value="">Select shape type...</option>
+                        <option value="ANGLE_EQUAL">Angle (Equal Leg)</option>
+                        <option value="ANGLE_UNEQUAL">Angle (Unequal Leg)</option>
+                        <option value="HSS_ROUND">HSS Round Tube</option>
+                        <option value="HSS_SQUARE">HSS Square Tube</option>
+                        <option value="HSS_RECT">HSS Rectangular Tube</option>
+                        <option value="PIPE">Pipe (Schedule)</option>
+                        <option value="CHANNEL">Channel (C / MC)</option>
+                        <option value="FLAT">Flat Bar</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Shape Size</label>
+                    <select id="shapeSize" class="form-select">
+                        <option value="">Select shape type first...</option>
+                    </select>
+                </div>
+                
+                <div class="diagram-container">
+                    <div id="shapeDiagram">
+                        <svg viewBox="0 0 200 100" class="diagram-svg">
+                            <text x="100" y="50" text-anchor="middle" fill="#64748b" font-size="12">Select a shape type above</text>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Part Info -->
+            <div class="card">
+                <div class="card-header">2. Part Info</div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Part Mark / ID</label>
+                        <input type="text" id="partMark" class="form-input" placeholder="e.g., A-101">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Quantity</label>
+                        <input type="number" id="partQty" class="form-input" value="1" min="1">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Length</label>
+                    <div class="toggle-group mb-2">
+                        <button class="toggle-btn unit-toggle active" data-unit="inches">Inches</button>
+                        <button class="toggle-btn unit-toggle" data-unit="feet-inches">Feet-Inches</button>
+                    </div>
+                    <div class="input-with-unit">
+                        <input type="text" id="partLength" class="form-input" placeholder="e.g., 126">
+                        <span class="input-unit">in</span>
+                    </div>
+                </div>
+                
+                <!-- Custom Part Checkbox (FLAT only) -->
+                <div id="customPartCheckboxContainer" class="form-group hidden">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="customPartCheckbox" onchange="app.togglePartDefinition()">
+                        <span>Cut custom part from stock</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Part Definition (FLAT only, shown when checkbox is checked) -->
+            <div id="partDefinitionCard" class="card hidden">
+                <div class="card-header">2b. Part Definition (Cut from Stock)</div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Part Width</label>
+                        <input type="text" id="partDefWidth" class="form-input" placeholder="inches">
+                        <small class="text-muted">Must be less than stock width</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Part Length</label>
+                        <input type="text" id="partDefLength" class="form-input" placeholder="inches">
+                        <small class="text-muted">Must be less than stock length</small>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Corner Treatments</label>
+                    <div class="corner-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
+                        <div class="corner-item">
+                            <label class="form-label text-sm">Near-Left (Start)</label>
+                            <select id="cornerNearLeft" class="form-select" onchange="app.updateCornerInput('nearLeft')">
+                                <option value="square">Square</option>
+                                <option value="chamfer">Chamfer</option>
+                                <option value="diagonal">Diagonal</option>
+                                <option value="notch">Notch</option>
+                            </select>
+                            <input type="text" id="cornerNearLeftDimX" class="form-input mt-2 hidden" placeholder="X cut (in)">
+                            <input type="text" id="cornerNearLeftDimY" class="form-input mt-1 hidden" placeholder="Y cut (in)">
+                        </div>
+                        <div class="corner-item">
+                            <label class="form-label text-sm">Far-Left (Start)</label>
+                            <select id="cornerFarLeft" class="form-select" onchange="app.updateCornerInput('farLeft')">
+                                <option value="square">Square</option>
+                                <option value="chamfer">Chamfer</option>
+                                <option value="diagonal">Diagonal</option>
+                                <option value="notch">Notch</option>
+                            </select>
+                            <input type="text" id="cornerFarLeftDimX" class="form-input mt-2 hidden" placeholder="X cut (in)">
+                            <input type="text" id="cornerFarLeftDimY" class="form-input mt-1 hidden" placeholder="Y cut (in)">
+                        </div>
+                        <div class="corner-item">
+                            <label class="form-label text-sm">Near-Right (End)</label>
+                            <select id="cornerNearRight" class="form-select" onchange="app.updateCornerInput('nearRight')">
+                                <option value="square">Square</option>
+                                <option value="chamfer">Chamfer</option>
+                                <option value="diagonal">Diagonal</option>
+                                <option value="notch">Notch</option>
+                            </select>
+                            <input type="text" id="cornerNearRightDimX" class="form-input mt-2 hidden" placeholder="X cut (in)">
+                            <input type="text" id="cornerNearRightDimY" class="form-input mt-1 hidden" placeholder="Y cut (in)">
+                        </div>
+                        <div class="corner-item">
+                            <label class="form-label text-sm">Far-Right (End)</label>
+                            <select id="cornerFarRight" class="form-select" onchange="app.updateCornerInput('farRight')">
+                                <option value="square">Square</option>
+                                <option value="chamfer">Chamfer</option>
+                                <option value="diagonal">Diagonal</option>
+                                <option value="notch">Notch</option>
+                            </select>
+                            <input type="text" id="cornerFarRightDimX" class="form-input mt-2 hidden" placeholder="X cut (in)">
+                            <input type="text" id="cornerFarRightDimY" class="form-input mt-1 hidden" placeholder="Y cut (in)">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group" style="margin-top: 12px;">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="clipHolesToContour" onchange="app.toggleClipCircle()">
+                        <span>Clip circle to part contour</span>
+                    </label>
+                    <small class="text-muted">Define a circle that extends beyond part edges to create an arc cut in the part outline</small>
+                </div>
+
+                <div id="clipCircleInputs" class="hidden" style="margin-top: 8px; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Circle Diameter</label>
+                            <input type="text" id="clipCircleDiameter" class="form-input" placeholder="inches" onchange="app.updatePartDefinition()">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Center X</label>
+                            <input type="text" id="clipCircleX" class="form-input" placeholder="inches from left" onchange="app.updatePartDefinition()">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Center Y</label>
+                            <input type="text" id="clipCircleY" class="form-input" placeholder="inches from bottom" onchange="app.updatePartDefinition()">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="diagram-container">
+                    <svg id="partDefDiagram" viewBox="0 0 300 150" class="diagram-svg">
+                        <text x="150" y="75" text-anchor="middle" fill="#64748b" font-size="10">Part preview will appear here</text>
+                    </svg>
+                </div>
+            </div>
+            
+            <!-- Operations -->
+            <div class="card">
+                <div class="card-header">3. Operations</div>
+                
+                <div id="operationsList" class="operations-list mb-3">
+                    <div class="text-muted text-center">No operations added</div>
+                </div>
+                
+                <button id="addOperation" class="btn btn-primary btn-block">
+                    + Add Operation
+                </button>
+            </div>
+            
+            <!-- Part Preview -->
+            <div class="card">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Part Preview</span>
+                    <div>
+                        <button id="generateNC1" class="btn btn-success btn-sm">Download NC1</button>
+                    </div>
+                </div>
+                <div class="preview-tabs">
+                    <button class="preview-tab active" data-view="side">Side View</button>
+                    <button class="preview-tab" data-view="end">End View</button>
+                </div>
+                <div id="partPreviewContainer" class="part-preview-container">
+                    <svg id="partPreviewSvg" viewBox="0 0 600 200" class="part-preview-svg">
+                        <text x="300" y="100" text-anchor="middle" fill="#64748b" font-size="14">Define part to see preview</text>
+                    </svg>
+                </div>
+                <div id="previewLegend" class="preview-legend hidden">
+                    <span class="legend-item"><span class="legend-color" style="background:#3b82f6"></span> Profile</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#ef4444"></span> Holes</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#fef3c7;border:1px solid #ef4444"></span> Thru Holes</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#e0f2fe;border:1px solid #0ea5e9"></span> Slots</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#fef3c7;border:1px solid #0ea5e9"></span> Thru Slots</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#f97316"></span> Notches</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#8b5cf6"></span> Miters</span>
+                </div>
+            </div>
+            
+            <!-- NC1 Preview -->
+            <div class="card">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>NC1 Preview</span>
+                    <button id="copyNC1" class="btn btn-secondary btn-sm">Copy NC1</button>
+                </div>
+                <div class="preview-panel">
+                    <pre id="nc1Preview"><span class="text-muted">Complete part definition to see preview...</span></pre>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Operation Modal -->
+    <div id="operationModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">Add Operation</div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Operation Type</label>
+                    <select id="operationType" class="form-select">
+                        <option value="endConditionLeft">End Condition - Left</option>
+                        <option value="endConditionRight">End Condition - Right</option>
+                        <option value="hole">Hole (single face)</option>
+                        <option value="thruHole">Thru Hole (both faces)</option>
+                        <option value="slot">Slot (single face)</option>
+                        <option value="thruSlot">Thru Slot (both faces)</option>
+                        <option value="cope">Cope</option>
+                        <option value="pipeCope">Pipe Cope (saddle cut)</option>
+                        <option value="notch">Notch</option>
+                        <option value="layoutMark">Layout Mark</option>
+                    </select>
+                </div>
+                
+                <div id="operationFormFields">
+                    <!-- Dynamic form fields inserted here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary modal-close">Cancel</button>
+                <button id="saveOperation" class="btn btn-primary">Add Operation</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="js/shapes-data.js"></script>
+    <script src="js/models.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/nc1-generator.js?v=1.12.3.2"></script>
+    <script src="js/app.js?v=1.12.3.2"></script>
+</body>
+</html>
