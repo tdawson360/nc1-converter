@@ -2064,18 +2064,21 @@ class NC1Generator {
         const isAngle = profileType === 'ANGLE_EQUAL' || profileType === 'ANGLE_UNEQUAL';
         
         // Calculate part offset for custom part definitions
-        // Holes are entered relative to the custom part, but NC1 needs stock coordinates
+        // Holes are entered relative to the custom part with Y=0 at the far-left (bottom of preview).
+        // NC1 Y=0 is the near side. So we flip Y: stockY = partW - userY
         let holeOffsetX = 0;
-        let holeOffsetY = 0;
+        let holeFlipY = false;
+        let holePartW = 0;
         if (isPlate && part.partDefinition && part.partDefinition.partWidth > 0 && part.partDefinition.partLength > 0) {
             const partL = part.partDefinition.partLength * this.INCH_TO_MM;
             const stockLength = part.length * this.INCH_TO_MM;
             holeOffsetX = (stockLength - partL) / 2;  // centered along stock length
-            holeOffsetY = 0;  // shares near side edge
+            holeFlipY = true;
+            holePartW = part.partDefinition.partWidth * this.INCH_TO_MM;
         }
         
         console.log('generateHoleBlock: isPlate=' + isPlate + ', isAngle=' + isAngle + ', holes=' + holes.length + 
-            ', holeOffsetX=' + holeOffsetX.toFixed(1) + ', holeOffsetY=' + holeOffsetY.toFixed(1));
+            ', holeOffsetX=' + holeOffsetX.toFixed(1) + ', holeFlipY=' + holeFlipY);
         
         // Group holes by face
         const holesByFace = {};
@@ -2083,7 +2086,7 @@ class NC1Generator {
         holes.forEach(hole => {
             // Convert to mm and apply part offset for custom parts
             const x = hole.x * scale + holeOffsetX;
-            const y = hole.y * scale + holeOffsetY;
+            const y = holeFlipY ? (holePartW - hole.y * scale) : (hole.y * scale);
             const diameter = hole.diameter * scale;
             
             // Face codes:
@@ -2143,12 +2146,14 @@ class NC1Generator {
         
         // Calculate part offset for custom part definitions
         let slotOffsetX = 0;
-        let slotOffsetY = 0;
+        let slotFlipY = false;
+        let slotPartW = 0;
         if (isPlate && part.partDefinition && part.partDefinition.partWidth > 0 && part.partDefinition.partLength > 0) {
             const partL = part.partDefinition.partLength * this.INCH_TO_MM;
             const stockLength = part.length * this.INCH_TO_MM;
             slotOffsetX = (stockLength - partL) / 2;
-            slotOffsetY = 0;
+            slotFlipY = true;
+            slotPartW = part.partDefinition.partWidth * this.INCH_TO_MM;
         }
         
         console.log('generateSlotBlock: profileType=' + profileType + ', isPlate=' + isPlate + ', isAngle=' + isAngle);
@@ -2180,9 +2185,9 @@ class NC1Generator {
             const totalLength = slot.length * scale;
             const extension = Math.max(0, totalLength - diameter);  // Extension = total length - diameter
             
-            // User enters CENTER position relative to custom part, apply offset
+            // User enters CENTER position relative to custom part, apply offset and Y flip
             let xPos = slot.x * scale + slotOffsetX;
-            let yPos = slot.y * scale + slotOffsetY;
+            let yPos = slotFlipY ? (slotPartW - slot.y * scale) : (slot.y * scale);
             
             if (slot.angle === 90) {
                 // Vertical slot - adjust Y to be start of straight section
