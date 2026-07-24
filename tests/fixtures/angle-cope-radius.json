@@ -1,0 +1,14 @@
+{
+  "partMark": "A2",
+  "quantity": 1,
+  "shape": {
+    "profileType": "ANGLE_EQUAL",
+    "designation": "L3X3X1/4",
+    "dimensions": { "long_leg": 3, "short_leg": 3, "t": 0.25, "k": 0.5 }
+  },
+  "length": 36,
+  "operations": [
+    { "type": "cope", "end": "left", "location": "top", "depth": 1, "length": 3, "radius": 0.5 },
+    { "type": "hole", "face": "v", "x": 18, "y": 1.75, "diameter": 0.8125 }
+  ]
+}

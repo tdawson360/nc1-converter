@@ -1,0 +1,16 @@
+{
+  "partMark": "T1",
+  "quantity": 1,
+  "shape": {
+    "profileType": "HSS_RECT",
+    "designation": "HSS6X4X1/4",
+    "dimensions": { "height": 6, "width": 4, "tdes": 0.233, "tnom": 0.25 }
+  },
+  "length": 60,
+  "operations": [
+    { "type": "endConditionLeft", "cutType": "miter", "webAngle": 30, "longPointLocation": "top" },
+    { "type": "endConditionRight", "cutType": "miter", "webAngle": 45, "longPointLocation": "bottom" },
+    { "type": "hole", "face": "v", "x": 10, "y": 3, "diameter": 0.8125 },
+    { "type": "hole", "face": "o", "x": 20, "y": 2, "diameter": 0.5625 }
+  ]
+}

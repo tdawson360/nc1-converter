@@ -1,0 +1,15 @@
+{
+  "partMark": "P1",
+  "quantity": 1,
+  "shape": {
+    "profileType": "FLAT",
+    "designation": "1/2\" x 10\"",
+    "dimensions": { "thickness": 0.5, "width": 10 }
+  },
+  "length": 24,
+  "operations": [
+    { "type": "hole", "face": "v", "x": 4, "y": 3, "diameter": 0.8125 },
+    { "type": "hole", "face": "v", "x": 8, "y": 3, "diameter": 0.8125 },
+    { "type": "slot", "face": "v", "x": 12, "y": 7, "length": 2, "width": 0.8125, "angle": 0, "endType": "round" }
+  ]
+}

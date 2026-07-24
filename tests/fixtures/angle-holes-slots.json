@@ -1,0 +1,15 @@
+{
+  "partMark": "A1",
+  "quantity": 4,
+  "shape": {
+    "profileType": "ANGLE_EQUAL",
+    "designation": "L3X3X1/4",
+    "dimensions": { "long_leg": 3, "short_leg": 3, "t": 0.25, "k": 0.5 }
+  },
+  "length": 36,
+  "operations": [
+    { "type": "hole", "face": "v", "x": 3, "y": 1.75, "diameter": 0.8125 },
+    { "type": "hole", "face": "u", "x": 6, "y": 1.5, "diameter": 0.8125 },
+    { "type": "slot", "face": "v", "x": 12, "y": 1.75, "length": 1.5, "width": 0.8125, "angle": 0, "endType": "round" }
+  ]
+}

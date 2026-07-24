@@ -1,0 +1,14 @@
+{
+  "partMark": "R1",
+  "quantity": 1,
+  "shape": {
+    "profileType": "HSS_ROUND",
+    "designation": "HSS4.500X0.237",
+    "dimensions": { "od": 4.5, "tdes": 0.22, "tnom": 0.237 }
+  },
+  "length": 40,
+  "operations": [
+    { "type": "endConditionLeft", "cutType": "miter", "webAngle": 45, "longPointLocation": "top" },
+    { "type": "hole", "face": "v", "x": 20, "y": 7, "diameter": 0.8125 }
+  ]
+}

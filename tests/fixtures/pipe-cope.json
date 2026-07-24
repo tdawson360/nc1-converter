@@ -1,0 +1,14 @@
+{
+  "partMark": "PP1",
+  "quantity": 1,
+  "shape": {
+    "profileType": "PIPE",
+    "designation": "Pipe2STD",
+    "dimensions": { "od": 2.375, "id": 2.067, "tdes": 0.154, "tnom": 0.154 }
+  },
+  "length": 30,
+  "operations": [
+    { "type": "pipeCope", "end": "left", "headerOD": 4.5, "intersectionAngle": 90, "offset": 0, "rotation": 0 },
+    { "type": "hole", "face": "v", "x": 15, "y": 2, "diameter": 0.5 }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "partMark": "T4",
+  "quantity": 1,
+  "shape": {
+    "profileType": "HSS_RECT",
+    "designation": "HSS6X4X1/4",
+    "dimensions": { "height": 6, "width": 4, "tdes": 0.233, "tnom": 0.25 }
+  },
+  "length": 48,
+  "operations": [
+    { "type": "endConditionRight", "cutType": "slotted", "webAngle": 45, "longPointLocation": "top", "slotLength": 6, "slotWidth": 0.5, "slotEndType": "radiused", "slotFaces": "webs" },
+    { "type": "hole", "face": "v", "x": 12, "y": 3, "diameter": 0.8125 }
+  ]
+}

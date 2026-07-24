@@ -1,0 +1,26 @@
+{
+  "partMark": "P4",
+  "quantity": 1,
+  "shape": {
+    "profileType": "FLAT",
+    "designation": "1/2\" x 12\"",
+    "dimensions": { "thickness": 0.5, "width": 12 }
+  },
+  "length": 24,
+  "partDefinition": {
+    "partWidth": 8,
+    "partLength": 18,
+    "position": "near",
+    "clipHolesToContour": true,
+    "clipCircle": { "diameter": 4, "x": 18, "y": 3 },
+    "corners": {
+      "nearLeft": { "type": "square", "dimX": 0, "dimY": 0 },
+      "farLeft": { "type": "square", "dimX": 0, "dimY": 0 },
+      "nearRight": { "type": "square", "dimX": 0, "dimY": 0 },
+      "farRight": { "type": "square", "dimX": 0, "dimY": 0 }
+    }
+  },
+  "operations": [
+    { "type": "hole", "face": "v", "x": 4, "y": 2, "diameter": 0.8125 }
+  ]
+}

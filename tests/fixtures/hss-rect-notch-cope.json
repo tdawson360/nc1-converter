@@ -1,0 +1,16 @@
+{
+  "partMark": "T5",
+  "quantity": 1,
+  "shape": {
+    "profileType": "HSS_RECT",
+    "designation": "HSS6X4X1/4",
+    "dimensions": { "height": 6, "width": 4, "tdes": 0.233, "tnom": 0.25 }
+  },
+  "length": 48,
+  "operations": [
+    { "type": "notch", "face": "v", "location": "top", "x": 10, "y": 0, "width": 3, "depth": 1, "radius": 0 },
+    { "type": "cope", "end": "left", "location": "top", "depth": 1, "length": 4, "radius": 0.5 },
+    { "type": "cope", "end": "right", "location": "bottom", "depth": 1, "length": 3, "radius": 0.5 },
+    { "type": "hole", "face": "v", "x": 24, "y": 3, "diameter": 0.8125 }
+  ]
+}

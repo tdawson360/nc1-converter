@@ -1,0 +1,17 @@
+{
+  "partMark": "T6",
+  "quantity": 2,
+  "shape": {
+    "profileType": "HSS_SQUARE",
+    "designation": "HSS4X4X1/4",
+    "dimensions": { "height": 4, "width": 4, "tdes": 0.233, "tnom": 0.25 }
+  },
+  "length": 36,
+  "operations": [
+    { "type": "hole", "face": "v", "x": 6, "y": 2, "diameter": 0.8125 },
+    { "type": "hole", "face": "h", "x": 12, "y": 2, "diameter": 0.8125 },
+    { "type": "hole", "face": "o", "x": 18, "y": 2, "diameter": 0.5625 },
+    { "type": "hole", "face": "u", "x": 24, "y": 2, "diameter": 0.5625 },
+    { "type": "slot", "face": "v", "x": 30, "y": 2, "length": 1.5, "width": 0.8125, "angle": 0, "endType": "round" }
+  ]
+}

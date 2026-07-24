@@ -1,0 +1,10 @@
+{
+  "name": "nc1-converter",
+  "version": "1.12.5",
+  "private": true,
+  "description": "NC1/DSTV file generator for steel fabrication",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "update-goldens": "node tests/update-goldens.js"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "partMark": "P2",
+  "quantity": 1,
+  "shape": {
+    "profileType": "FLAT",
+    "designation": "1/2\" x 6\"",
+    "dimensions": { "thickness": 0.5, "width": 6 }
+  },
+  "length": 12,
+  "operations": [
+    { "type": "hole", "face": "v", "x": 3, "y": 3, "diameter": 0.8125 },
+    { "type": "hole", "face": "v", "x": 11, "y": 3, "diameter": 4 }
+  ]
+}

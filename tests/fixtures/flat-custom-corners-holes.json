@@ -1,0 +1,28 @@
+{
+  "partMark": "P3",
+  "quantity": 1,
+  "shape": {
+    "profileType": "FLAT",
+    "designation": "1/2\" x 12\"",
+    "dimensions": { "thickness": 0.5, "width": 12 }
+  },
+  "length": 24,
+  "partDefinition": {
+    "partWidth": 8,
+    "partLength": 18,
+    "position": "near",
+    "clipHolesToContour": false,
+    "clipCircle": null,
+    "corners": {
+      "nearLeft": { "type": "square", "dimX": 0, "dimY": 0 },
+      "farLeft": { "type": "chamfer", "dimX": 1, "dimY": 1 },
+      "nearRight": { "type": "diagonal", "dimX": 2, "dimY": 1.5 },
+      "farRight": { "type": "square", "dimX": 0, "dimY": 0 }
+    }
+  },
+  "operations": [
+    { "type": "hole", "face": "v", "x": 3, "y": 2, "diameter": 0.8125 },
+    { "type": "hole", "face": "v", "x": 15, "y": 6, "diameter": 0.8125 },
+    { "type": "slot", "face": "v", "x": 9, "y": 2, "length": 1.5, "width": 0.8125, "angle": 0, "endType": "round" }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "partMark": "321",
+  "quantity": 1,
+  "shape": {
+    "profileType": "CHANNEL",
+    "designation": "C6X8.2",
+    "dimensions": { "depth": 6, "flange_width": 1.92, "web_thickness": 0.2, "flange_thickness": 0.343 }
+  },
+  "length": 18.5,
+  "operations": [
+    { "type": "cope", "end": "left", "location": "web", "depth": 2, "length": 4, "radius": 0.5 }
+  ]
+}
