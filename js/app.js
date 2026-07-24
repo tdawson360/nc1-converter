@@ -207,9 +207,22 @@ class NC1ConverterApp {
         // Update diagram
         this.updateShapeDiagram(shapeType);
         
-        // Store profile type on current part
+        // Store profile type on current part. Switching types invalidates the
+        // previously selected size and any operations defined against it —
+        // without this, the old designation/dimensions stay on the part and a
+        // mismatched NC1 file can be generated.
+        if (this.currentPart.shape.profileType && this.currentPart.shape.profileType !== shapeType) {
+            this.currentPart.shape.designation = null;
+            this.currentPart.shape.dimensions = {};
+            if (this.currentPart.operations.length > 0) {
+                this.currentPart.operations = [];
+                this.updateOperationsList();
+                this.showMessage('Operations cleared - they were defined for the previous shape type', 'info');
+            }
+            this.updatePreview();
+        }
         this.currentPart.shape.profileType = shapeType;
-        
+
         // Show/hide custom part checkbox for FLAT
         if (shapeType === 'FLAT') {
             this.showCustomPartCheckbox();
@@ -272,6 +285,15 @@ class NC1ConverterApp {
         }
         
         shapes = this.shapesData[dataKey];
+
+        // Channels: list all C shapes before MC shapes (C gets used far more)
+        if (shapeType === 'CHANNEL' && shapes) {
+            shapes = [
+                ...shapes.filter(s => s.type === 'C'),
+                ...shapes.filter(s => s.type !== 'C')
+            ];
+        }
+
         console.log('Data key:', dataKey);
         console.log('Shapes found:', shapes ? shapes.length : 'NONE');
         
@@ -650,6 +672,7 @@ class NC1ConverterApp {
     showOperationModal() {
         const modal = document.getElementById('operationModal');
         if (modal) {
+            this.editingOperationId = null;  // fresh add, not an edit
             modal.classList.add('active');
             
             // Update dropdown to show which end conditions are already defined
@@ -708,6 +731,7 @@ class NC1ConverterApp {
     }
     
     closeModal() {
+        this.editingOperationId = null;
         document.querySelectorAll('.modal-overlay').forEach(modal => {
             modal.classList.remove('active');
         });
@@ -2135,8 +2159,21 @@ class NC1ConverterApp {
         }
         
         if (operation) {
-            // Check for duplicate end conditions (backstop)
-            if (opType === 'endConditionLeft' || opType === 'endConditionRight') {
+            const editingId = this.editingOperationId;
+            this.editingOperationId = null;
+
+            if (editingId) {
+                // Editing an existing operation - replace it in place
+                const idx = this.currentPart.operations.findIndex(op => op.id === editingId);
+                if (idx !== -1) {
+                    operation.id = editingId;
+                    this.currentPart.operations[idx] = operation;
+                    this.showMessage('Operation updated', 'info');
+                } else {
+                    this.currentPart.addOperation(operation);
+                }
+            } else if (opType === 'endConditionLeft' || opType === 'endConditionRight') {
+                // Check for duplicate end conditions (backstop)
                 const existingIndex = this.currentPart.operations.findIndex(op => op.type === opType);
                 if (existingIndex !== -1) {
                     // Replace existing instead of adding duplicate
@@ -2221,7 +2258,9 @@ class NC1ConverterApp {
                 case 'cope':
                     icon = 'C';
                     typeName = 'Cope';
-                    params = `${op.end}, ${op.depth}" x ${op.length}"`;
+                    params = `${op.end} end, ${(op.location || 'top').replace('_', ' ')}, ` +
+                        `${op.depth}" deep x ${op.length}" long` +
+                        (op.radius > 0 ? `, ${op.radius}" radius` : ', square corner');
                     break;
                 case 'pipeCope':
                     icon = 'PC';
@@ -2236,10 +2275,11 @@ class NC1ConverterApp {
                 case 'notch':
                     icon = 'N';
                     typeName = 'Notch';
-                    params = `${op.location}, ${op.width}" x ${op.depth}" @ X:${op.x}"`;
+                    params = `${(op.location || '').replace('_', ' ')}, ${op.width}" wide x ${op.depth}" deep @ X:${op.x}"` +
+                        (op.radius > 0 ? `, ${op.radius}" radius` : '');
                     break;
             }
-            
+
             html += `
                 <div class="operation-item" data-id="${op.id}">
                     <div class="operation-icon">${icon}</div>
@@ -2248,7 +2288,8 @@ class NC1ConverterApp {
                         <div class="operation-params">${params}</div>
                     </div>
                     <div class="operation-actions">
-                        <button class="btn btn-sm btn-danger" onclick="app.removeOperation('${op.id}')">X</button>
+                        <button class="btn btn-sm" onclick="app.editOperation('${op.id}')" title="Edit this operation">Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="app.removeOperation('${op.id}')" title="Delete this operation">X</button>
                     </div>
                 </div>
             `;
@@ -2261,6 +2302,109 @@ class NC1ConverterApp {
         this.currentPart.removeOperation(opId);
         this.updateOperationsList();
         this.updatePreview();
+    }
+
+    editOperation(opId) {
+        const op = this.currentPart.operations.find(o => o.id === opId);
+        if (!op) return;
+
+        const modal = document.getElementById('operationModal');
+        if (!modal) return;
+
+        this.editingOperationId = opId;
+        modal.classList.add('active');
+        this.updateOperationTypeDropdown();
+
+        const opTypeSelect = document.getElementById('operationType');
+        if (opTypeSelect) {
+            // The op's own type may be disabled (e.g. an already-defined end
+            // condition) - re-enable it so it can be selected for editing
+            const opt = Array.from(opTypeSelect.options).find(o => o.value === op.type);
+            if (opt) opt.disabled = false;
+            opTypeSelect.value = op.type;
+            this.updateOperationForm(op.type);
+        }
+
+        this.fillOperationForm(op);
+    }
+
+    /** Pre-fill the operation form fields from an existing operation. */
+    fillOperationForm(op) {
+        const set = (id, value) => {
+            const el = document.getElementById(id);
+            if (el && value !== undefined && value !== null) el.value = value;
+        };
+
+        switch (op.type) {
+            case 'endConditionLeft':
+            case 'endConditionRight': {
+                const end = op.type === 'endConditionLeft' ? 'left' : 'right';
+                set('opCutType', op.cutType);
+                this.updateEndConditionForm(end);
+                set('opWebAngle', op.webAngle);
+                set('opLongPoint', op.longPointLocation);
+                if (op.cutType === 'doubleMiter') {
+                    set('opTopCutback', op.topCutback);
+                    set('opBottomCutback', op.bottomCutback);
+                    set('opDropdown', op.dropdown);
+                }
+                if (op.cutType === 'slotted') {
+                    set('opSlotLength', op.slotLength);
+                    set('opSlotWidth', op.slotWidth);
+                    set('opSlotEndType', op.slotEndType);
+                    set('opSlotFaces', op.slotFaces);
+                }
+                break;
+            }
+            case 'hole':
+                set('opFace', op.face);
+                set('opX', op.x);
+                set('opY', op.y);
+                set('opDiameter', op.diameter);
+                break;
+            case 'thruHole':
+                set('opAxis', op.axis);
+                set('opX', op.x);
+                set('opY', op.y);
+                set('opDiameter', op.diameter);
+                break;
+            case 'slot':
+            case 'thruSlot':
+                set(op.type === 'slot' ? 'opFace' : 'opAxis', op.type === 'slot' ? op.face : op.axis);
+                set('opX', op.x);
+                set('opY', op.y);
+                set('opLength', op.length);
+                set('opWidth', op.width);
+                set('opOrientation', op.angle === 90 ? 'vertical' : 'horizontal');
+                break;
+            case 'cope':
+                set('opEnd', op.end);
+                set('opLocation', op.location);
+                set('opDepth', op.depth);
+                set('opLength', op.length);
+                set('opRadius', op.radius);
+                break;
+            case 'pipeCope':
+                set('opEnd', op.end);
+                set('opHeaderOD', op.headerOD);
+                set('opIntersectionAngle', op.intersectionAngle);
+                set('opOffset', op.offset);
+                set('opRotation', op.rotation);
+                break;
+            case 'notch':
+                set('opLocation', op.location);
+                set('opX', op.x);
+                set('opWidth', op.width);
+                set('opDepth', op.depth);
+                break;
+            case 'layoutMark':
+                set('opFace', op.face);
+                set('opMarkType', op.markType);
+                set('opX', op.x);
+                set('opY', op.y);
+                set('opText', op.text);
+                break;
+        }
     }
     
     updatePreview() {
@@ -2313,289 +2457,67 @@ class NC1ConverterApp {
         // Show legend
         if (legend) legend.classList.remove('hidden');
         
-        // Get current view mode
-        const activeTab = document.querySelector('.preview-tab.active');
-        const viewMode = activeTab ? activeTab.dataset.view : 'side';
-        
-        if (viewMode === 'side') {
-            this.renderSideView(svg);
-        } else {
+        // Get current view mode (scope to the main tab row - the NC1 face
+        // buttons share styling but live in #nc1FaceButtons)
+        const activeTab = document.querySelector('.preview-tabs:not(#nc1FaceButtons) .preview-tab.active');
+        const viewMode = activeTab ? activeTab.dataset.view : 'top';
+
+        const faceButtons = document.getElementById('nc1FaceButtons');
+        if (faceButtons && viewMode === 'end') faceButtons.classList.add('hidden');
+
+        if (viewMode === 'end') {
             this.renderEndView(svg);
+        } else {
+            // All part views render natively from the generated NC1 output
+            this.renderNC1View(svg);
         }
     }
-    
+
     /**
-     * Render side view of the part
+     * Render the NC1 View: generate the file, parse it back, and draw the
+     * selected face - the preview shows exactly what the output contains.
      */
-    renderSideView(svg) {
-        const part = this.currentPart;
-        const dims = part.shape.dimensions || {};
-        const profileType = part.shape.profileType;
-        
-        // Calculate dimensions in display units
-        const length = part.length || 1;  // inches, default to 1 to avoid division by zero
-        let height = 0;
-        
-        switch (profileType) {
-            case 'HSS_SQUARE':
-            case 'HSS_RECT':
-                height = dims.height || 4;
-                break;
-            case 'ANGLE_EQUAL':
-            case 'ANGLE_UNEQUAL':
-                height = dims.long_leg || 4;
-                break;
-            case 'CHANNEL':
-            case 'WF':
-                height = dims.depth || 4;
-                break;
-            case 'FLAT':
-                height = dims.width || 4;
-                break;
-            case 'HSS_ROUND':
-            case 'PIPE':
-                height = dims.od || 4;
-                break;
-            default:
-                height = 4;
+    renderNC1View(svg) {
+        const validation = this.currentPart.validate();
+        if (!validation.valid) {
+            svg.innerHTML = '<text x="300" y="100" text-anchor="middle" fill="#64748b" font-size="12">Complete part definition to see the NC1 view</text>';
+            return;
         }
-        
-        // Ensure height is valid
-        if (!height || height <= 0) height = 4;
-        
-        // Scale to fit SVG viewBox (600 x 200, with padding)
-        const padding = 40;
-        const availWidth = 600 - (padding * 2);
-        const availHeight = 200 - (padding * 2);
-        
-        const scaleX = availWidth / length;
-        const scaleY = availHeight / height;
-        const scale = Math.min(scaleX, scaleY, 10);  // Cap scale at 10
-        
-        const drawWidth = length * scale;
-        const drawHeight = height * scale;
-        const offsetX = (600 - drawWidth) / 2;
-        const offsetY = (200 - drawHeight) / 2;
-        
-        let svgContent = '';
-        
-        // Get operations
-        const leftCut = part.operations.find(op => op.type === 'endConditionLeft');
-        const rightCut = part.operations.find(op => op.type === 'endConditionRight');
-        const notches = part.operations.filter(op => op.type === 'notch');
-        const copes = part.operations.filter(op => op.type === 'cope');
-        const holes = part.operations.filter(op => op.type === 'hole');
-        const thruHoles = part.operations.filter(op => op.type === 'thruHole');
-        const slots = part.operations.filter(op => op.type === 'slot');
-        const thruSlots = part.operations.filter(op => op.type === 'thruSlot');
-        
-        // Process copes
-        const leftTopCope = copes.find(c => c.end === 'left' && (c.location === 'top' || c.location === 'both'));
-        const leftBottomCope = copes.find(c => c.end === 'left' && (c.location === 'bottom' || c.location === 'both'));
-        const rightTopCope = copes.find(c => c.end === 'right' && (c.location === 'top' || c.location === 'both'));
-        const rightBottomCope = copes.find(c => c.end === 'right' && (c.location === 'bottom' || c.location === 'both'));
-        
-        // Calculate miter offsets
-        let leftTopOffset = 0, leftBottomOffset = 0;
-        let rightTopOffset = 0, rightBottomOffset = 0;
-        
-        if (leftCut && leftCut.cutType === 'miter') {
-            const angle = leftCut.webAngle || 45;
-            const miterOffset = height * Math.tan(angle * Math.PI / 180);
-            if (leftCut.longPointLocation === 'top') {
-                leftBottomOffset = miterOffset;
-            } else {
-                leftTopOffset = miterOffset;
-            }
+
+        let parsed;
+        try {
+            parsed = NC1Viewer.parse(this.generator.generate(this.currentPart));
+        } catch (error) {
+            console.error('NC1 view error:', error);
+            svg.innerHTML = '<text x="300" y="100" text-anchor="middle" fill="#dc2626" font-size="12">Error generating NC1 for view</text>';
+            return;
         }
-        
-        if (rightCut && rightCut.cutType === 'miter') {
-            const angle = rightCut.webAngle || 45;
-            const miterOffset = height * Math.tan(angle * Math.PI / 180);
-            if (rightCut.longPointLocation === 'top') {
-                rightBottomOffset = miterOffset;
-            } else {
-                rightTopOffset = miterOffset;
-            }
+
+        const faces = Object.keys(parsed.faces);
+        if (faces.length === 0) {
+            svg.innerHTML = '<text x="300" y="100" text-anchor="middle" fill="#64748b" font-size="12">No contours in NC1 output</text>';
+            return;
         }
-        
-        // Build profile path with notches and copes integrated
-        let pathPoints = [];
-        
-        // Start at bottom-left (accounting for left bottom cope)
-        let startY = leftBottomCope ? height - leftBottomCope.depth : height;
-        pathPoints.push({ x: leftBottomOffset, y: startY });
-        
-        // Left bottom cope step
-        if (leftBottomCope) {
-            pathPoints.push({ x: leftBottomCope.length, y: startY });
-            pathPoints.push({ x: leftBottomCope.length, y: height });
+        if (!this.nc1ViewFace || !faces.includes(this.nc1ViewFace)) {
+            this.nc1ViewFace = faces[0];
         }
-        
-        // Bottom edge (accounting for right bottom cope)
-        if (rightBottomCope) {
-            pathPoints.push({ x: length - rightBottomCope.length, y: height });
-            pathPoints.push({ x: length - rightBottomCope.length, y: height - rightBottomCope.depth });
-            pathPoints.push({ x: length - rightBottomOffset, y: height - rightBottomCope.depth });
-        } else {
-            pathPoints.push({ x: length - rightBottomOffset, y: height });
+
+        const profileMeta = PROFILE_TYPES[this.currentPart.shape.profileType];
+        const faceNames = (profileMeta && profileMeta.faceNames) || {};
+        const btnBox = document.getElementById('nc1FaceButtons');
+        if (btnBox) {
+            btnBox.classList.remove('hidden');
+            btnBox.innerHTML = faces.map(f =>
+                `<button class="preview-tab ${f === this.nc1ViewFace ? 'active' : ''}" onclick="app.setNC1ViewFace('${f}')">${f} - ${faceNames[f] || 'Face'}</button>`
+            ).join('');
         }
-        
-        // Right top cope step
-        if (rightTopCope) {
-            pathPoints.push({ x: length - rightTopOffset, y: rightTopCope.depth });
-            pathPoints.push({ x: length - rightTopCope.length, y: rightTopCope.depth });
-            pathPoints.push({ x: length - rightTopCope.length, y: 0 });
-        } else {
-            pathPoints.push({ x: length - rightTopOffset, y: 0 });
-        }
-        
-        // Top edge with notches (right to left)
-        const sortedNotches = [...notches].sort((a, b) => b.x - a.x);
-        let currentX = rightTopCope ? length - rightTopCope.length : length - rightTopOffset;
-        
-        for (const notch of sortedNotches) {
-            const notchRight = notch.x + notch.width;
-            const notchLeft = notch.x;
-            const notchBottom = notch.depth;
-            
-            if (notchRight < currentX) {
-                pathPoints.push({ x: notchRight, y: 0 });
-                pathPoints.push({ x: notchRight, y: notchBottom });
-                pathPoints.push({ x: notchLeft, y: notchBottom });
-                pathPoints.push({ x: notchLeft, y: 0 });
-                currentX = notchLeft;
-            }
-        }
-        
-        // Left top cope step
-        if (leftTopCope) {
-            pathPoints.push({ x: leftTopCope.length, y: 0 });
-            pathPoints.push({ x: leftTopCope.length, y: leftTopCope.depth });
-            pathPoints.push({ x: leftTopOffset, y: leftTopCope.depth });
-        } else {
-            pathPoints.push({ x: leftTopOffset, y: 0 });
-        }
-        
-        // Close path back to start
-        pathPoints.push({ x: leftBottomOffset, y: startY });
-        
-        // Convert to SVG path
-        const pathD = pathPoints.map((p, i) => {
-            const x = offsetX + p.x * scale;
-            const y = offsetY + p.y * scale;
-            return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
-        }).join(' ') + ' Z';
-        
-        // Profile fill
-        svgContent += `<path d="${pathD}" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>`;
-        
-        // Draw miter indicators
-        if (leftCut && leftCut.cutType === 'miter') {
-            const x1 = offsetX + leftBottomOffset * scale;
-            const y1 = offsetY + height * scale;
-            const x2 = offsetX + leftTopOffset * scale;
-            const y2 = offsetY;
-            svgContent += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#8b5cf6" stroke-width="3"/>`;
-        }
-        
-        if (rightCut && rightCut.cutType === 'miter') {
-            const x1 = offsetX + (length - rightBottomOffset) * scale;
-            const y1 = offsetY + height * scale;
-            const x2 = offsetX + (length - rightTopOffset) * scale;
-            const y2 = offsetY;
-            svgContent += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#8b5cf6" stroke-width="3"/>`;
-        }
-        
-        // Draw notch outlines
-        for (const notch of notches) {
-            const nx = offsetX + notch.x * scale;
-            const ny = offsetY;
-            const nw = notch.width * scale;
-            const nd = notch.depth * scale;
-            svgContent += `<rect x="${nx}" y="${ny}" width="${nw}" height="${nd}" fill="none" stroke="#f97316" stroke-width="2" stroke-dasharray="4,2"/>`;
-        }
-        
-        // Draw cope outlines
-        for (const cope of copes) {
-            const copeLen = cope.length * scale;
-            const copeDepth = cope.depth * scale;
-            let cx, cy;
-            
-            if (cope.end === 'left') {
-                cx = offsetX;
-            } else {
-                cx = offsetX + (length - cope.length) * scale;
-            }
-            
-            if (cope.location === 'top' || cope.location === 'both') {
-                cy = offsetY;
-                svgContent += `<rect x="${cx}" y="${cy}" width="${copeLen}" height="${copeDepth}" fill="none" stroke="#f97316" stroke-width="2" stroke-dasharray="4,2"/>`;
-            }
-            if (cope.location === 'bottom' || cope.location === 'both') {
-                cy = offsetY + (height - cope.depth) * scale;
-                svgContent += `<rect x="${cx}" y="${cy}" width="${copeLen}" height="${copeDepth}" fill="none" stroke="#f97316" stroke-width="2" stroke-dasharray="4,2"/>`;
-            }
-        }
-        
-        // Draw holes
-        for (const hole of holes) {
-            const hx = offsetX + hole.x * scale;
-            const hy = offsetY + (height - hole.y) * scale;
-            const hr = (hole.diameter / 2) * scale;
-            svgContent += `<circle cx="${hx}" cy="${hy}" r="${Math.max(hr, 3)}" fill="#fee2e2" stroke="#ef4444" stroke-width="2"/>`;
-        }
-        
-        // Draw thru holes (with crosshair to indicate through both sides)
-        for (const hole of thruHoles) {
-            const hx = offsetX + hole.x * scale;
-            const hy = offsetY + (height - hole.y) * scale;
-            const hr = (hole.diameter / 2) * scale;
-            const r = Math.max(hr, 3);
-            svgContent += `<circle cx="${hx}" cy="${hy}" r="${r}" fill="#fef3c7" stroke="#ef4444" stroke-width="2"/>`;
-            svgContent += `<line x1="${hx - r - 2}" y1="${hy}" x2="${hx + r + 2}" y2="${hy}" stroke="#ef4444" stroke-width="1"/>`;
-            svgContent += `<line x1="${hx}" y1="${hy - r - 2}" x2="${hx}" y2="${hy + r + 2}" stroke="#ef4444" stroke-width="1"/>`;
-        }
-        
-        // Draw slots (always rounded ends)
-        for (const slot of slots) {
-            const sx = offsetX + slot.x * scale;
-            const sy = offsetY + (height - slot.y) * scale;
-            let slotW, slotH;
-            if (slot.angle === 90) {
-                slotW = slot.width * scale;
-                slotH = slot.length * scale;
-            } else {
-                slotW = slot.length * scale;
-                slotH = slot.width * scale;
-            }
-            const rx = Math.min(slotW, slotH) / 2;  // Always rounded
-            svgContent += `<rect x="${sx - slotW/2}" y="${sy - slotH/2}" width="${slotW}" height="${slotH}" rx="${rx}" fill="#e0f2fe" stroke="#0ea5e9" stroke-width="2"/>`;
-        }
-        
-        // Draw thru slots (with crosshair to indicate through both sides)
-        for (const slot of thruSlots) {
-            const sx = offsetX + slot.x * scale;
-            const sy = offsetY + (height - slot.y) * scale;
-            let slotW, slotH;
-            if (slot.angle === 90) {
-                slotW = slot.width * scale;
-                slotH = slot.length * scale;
-            } else {
-                slotW = slot.length * scale;
-                slotH = slot.width * scale;
-            }
-            const rx = Math.min(slotW, slotH) / 2;
-            svgContent += `<rect x="${sx - slotW/2}" y="${sy - slotH/2}" width="${slotW}" height="${slotH}" rx="${rx}" fill="#fef3c7" stroke="#0ea5e9" stroke-width="2"/>`;
-            svgContent += `<line x1="${sx - slotW/2 - 2}" y1="${sy}" x2="${sx + slotW/2 + 2}" y2="${sy}" stroke="#0ea5e9" stroke-width="1"/>`;
-            svgContent += `<line x1="${sx}" y1="${sy - slotH/2 - 2}" x2="${sx}" y2="${sy + slotH/2 + 2}" stroke="#0ea5e9" stroke-width="1"/>`;
-        }
-        
-        // Dimension text
-        svgContent += `<text x="${offsetX + drawWidth/2}" y="${offsetY + drawHeight + 25}" text-anchor="middle" fill="#64748b" font-size="12">${length}" length</text>`;
-        svgContent += `<text x="${offsetX - 10}" y="${offsetY + drawHeight/2}" text-anchor="end" fill="#64748b" font-size="11">${height.toFixed(2)}"</text>`;
-        
-        svg.innerHTML = svgContent;
+
+        NC1Viewer.renderFace(parsed, this.nc1ViewFace, svg);
+    }
+
+    setNC1ViewFace(face) {
+        this.nc1ViewFace = face;
+        this.updatePartPreview();
     }
     
     /**
@@ -2775,19 +2697,19 @@ class NC1ConverterApp {
             if (input) input.value = '';
         });
         
-        const partDefPosition = document.getElementById('partDefPosition');
-        if (partDefPosition) partDefPosition.value = 'centered';
-        
-        // Reset corner dropdowns
-        const corners = ['NearLeft', 'FarLeft', 'NearRight', 'FarRight'];
+        // Reset corner dropdowns and their X/Y dimension inputs
+        const corners = ['nearLeft', 'farLeft', 'nearRight', 'farRight'];
         corners.forEach(corner => {
-            const select = document.getElementById(`corner${corner}`);
-            const dimInput = document.getElementById(`corner${corner}Dim`);
+            const cornerKey = corner.charAt(0).toUpperCase() + corner.slice(1);
+            const select = document.getElementById(`corner${cornerKey}`);
             if (select) select.value = 'square';
-            if (dimInput) {
-                dimInput.value = '';
-                dimInput.classList.add('hidden');
-            }
+            this.updateCornerInput(corner);
+        });
+
+        // Reset clip circle inputs
+        ['clipCircleDiameter', 'clipCircleX', 'clipCircleY'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) input.value = '';
         });
         
         this.updateOperationsList();

@@ -229,9 +229,10 @@
                     </div>
                 </div>
                 <div class="preview-tabs">
-                    <button class="preview-tab active" data-view="side">Side View</button>
+                    <button class="preview-tab active" data-view="top">Top View</button>
                     <button class="preview-tab" data-view="end">End View</button>
                 </div>
+                <div id="nc1FaceButtons" class="preview-tabs hidden"></div>
                 <div id="partPreviewContainer" class="part-preview-container">
                     <svg id="partPreviewSvg" viewBox="0 0 600 200" class="part-preview-svg">
                         <text x="300" y="100" text-anchor="middle" fill="#64748b" font-size="14">Define part to see preview</text>
@@ -293,11 +294,13 @@
         </div>
     </div>
     
-    <!-- Scripts -->
-    <script src="js/shapes-data.js"></script>
-    <script src="js/models.js"></script>
-    <script src="js/utils.js"></script>
-    <script src="js/nc1-generator.js?v=1.12.3.2"></script>
-    <script src="js/app.js?v=1.12.3.2"></script>
+    <!-- Scripts (keep the ?v= version in sync across ALL five on every release
+         so deployed users never get a mix of cached old and new files) -->
+    <script src="js/shapes-data.js?v=1.12.5"></script>
+    <script src="js/models.js?v=1.12.5"></script>
+    <script src="js/utils.js?v=1.12.5"></script>
+    <script src="js/nc1-generator.js?v=1.12.5"></script>
+    <script src="js/nc1-viewer.js?v=1.12.5"></script>
+    <script src="js/app.js?v=1.12.5"></script>
 </body>
 </html>

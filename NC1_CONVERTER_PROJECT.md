@@ -102,6 +102,15 @@ Slots use BO format with 'l' marker after depth value.
 - No depth field for angles
 
 ### Version History
+- v1.12.5: Golden-file test harness (npm test). Channel copes/notches integrated into
+  profile contours (were double/triple-emitted); channel web cope cuts web + near flange
+  with polyline fillet; flange copes honor depth/radius (were full cutback always);
+  HSS cope fillets on all four corners, both faces; fixed HSS mixed-miter typo,
+  generic cope block (wrong end / malformed radius contour), custom-part circle
+  clipping Y-flip and multi-arc splice; parseFeetInches 18.5"/1/2" mis-parse fixed.
+  Part preview now renders natively from the generated NC1 per face; operation
+  edit buttons and full detail display; C shapes listed before MC; cache-busters
+  synced on all scripts.
 - v1.11: Circle clipping for oversized BO on plates - arcs integrated into AK contour as polylines
 - v1.10: Fixed channel (C/MC) header - tf before tw, fillet radius = k-tf
 - v1.9: Added slotted end connection for HSS tubes

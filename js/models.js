@@ -73,10 +73,10 @@ const PROFILE_TYPES = {
         name: 'Channel',
         faces: ['v', 'h', 'o', 'u'],
         faceNames: {
-            v: 'Web (Outside)',
+            v: 'Web (top as loaded)',
             h: 'Web (Inside)',
-            o: 'Top Flange',
-            u: 'Bottom Flange'
+            o: 'Near Flange',
+            u: 'Far Flange'
         }
     },
     FLAT: {
@@ -471,7 +471,8 @@ if (typeof module !== 'undefined' && module.exports) {
         PROFILE_TYPES,
         OPERATION_TYPES,
         Part,
-        EndCut,
+        EndConditionLeft,
+        EndConditionRight,
         Hole,
         Slot,
         Cope,

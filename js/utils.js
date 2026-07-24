@@ -16,20 +16,25 @@ const Utils = {
         if (typeof input === 'number') return input;
         
         let str = String(input).trim().toUpperCase();
-        
+
+        // Strip a trailing inch mark for the anchored tests below. Without
+        // this, 18.5" falls through to the whole-number inch regex and
+        // parses as 5, and 1/2" parses as 2.5.
+        const bare = str.replace(/\s*["″]$/, '');
+
         // Handle pure decimal inches
-        if (/^[\d.]+$/.test(str)) {
-            return parseFloat(str);
+        if (/^[\d.]+$/.test(bare)) {
+            return parseFloat(bare);
         }
-        
+
         // Handle fractions like "1/2", "3/4"
-        const fractionMatch = str.match(/^(\d+)\/(\d+)$/);
+        const fractionMatch = bare.match(/^(\d+)\/(\d+)$/);
         if (fractionMatch) {
             return parseInt(fractionMatch[1]) / parseInt(fractionMatch[2]);
         }
-        
+
         // Handle mixed number like "6-1/2" or "6 1/2"
-        const mixedMatch = str.match(/^(\d+)[\s-]+(\d+)\/(\d+)$/);
+        const mixedMatch = bare.match(/^(\d+)[\s-]+(\d+)\/(\d+)$/);
         if (mixedMatch) {
             return parseInt(mixedMatch[1]) + parseInt(mixedMatch[2]) / parseInt(mixedMatch[3]);
         }

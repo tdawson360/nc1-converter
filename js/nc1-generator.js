@@ -1,14 +1,16 @@
 /**
  * NC1 Converter - DSTV/NC1 File Generator
  * Generates NC1 files compliant with DSTV standard
- * Version: 1.12.4.1
+ * Version: 1.12.5
  */
 
 class NC1Generator {
     constructor() {
         // DSTV format uses millimeters internally
         this.INCH_TO_MM = 25.4;
-        console.log('NC1Generator v1.12.4.1 loaded - IK cutout with arc clipping on all edges');
+        // Polyline segments used to trace a corner fillet arc
+        this.FILLET_SEGMENTS = 8;
+        console.log('NC1Generator v1.12.5 loaded');
     }
     
     /**
@@ -88,13 +90,19 @@ class NC1Generator {
         }
         
         const clippedArcs = [];
-        
+
+        // Custom-part holes (and the clip circle) are entered with Y=0 at the
+        // far side (bottom of preview); part-local/NC1 Y=0 is the near side.
+        // Flip here exactly like generateHoleBlock does for BO output, so the
+        // clip test and the spliced arc land where the hole actually is.
+        const isCustomPart = !!(part.partDefinition && part.partDefinition.partWidth > 0 && part.partDefinition.partLength > 0);
+
         // Check each hole operation
         part.operations.forEach((op, idx) => {
             if (op.type !== 'hole') return;
-            
+
             const cx = op.x * scale;
-            const cy = op.y * scale;
+            const cy = isCustomPart ? (plateW - op.y * scale) : (op.y * scale);
             const r = (op.diameter / 2) * scale;
             
             const result = this._computeClippedArc(cx, cy, r, plateL, plateW);
@@ -112,7 +120,7 @@ class NC1Generator {
             const cc = part.partDefinition.clipCircle;
             if (cc.diameter > 0) {
                 const cx = cc.x * scale;
-                const cy = cc.y * scale;
+                const cy = isCustomPart ? (plateW - cc.y * scale) : (cc.y * scale);
                 const r = (cc.diameter / 2) * scale;
                 
                 console.log('Clip circle: cx=' + cx.toFixed(1) + ' cy=' + cy.toFixed(1) + ' r=' + r.toFixed(1) + 
@@ -691,11 +699,32 @@ class NC1Generator {
             radius: (c.radius || 0) * scale
         }));
         
-        // Find copes by position (near_flange = o-face, far_flange = u-face)
-        const leftNearCope = processedCopes.find(c => c.end === 'left' && (c.location === 'near_flange' || c.location === 'both'));
+        // Find copes by position (near_flange = o-face, far_flange = u-face).
+        // A web cope cuts into the web from its y=h edge, which in DSTV is the
+        // o-flange side - so the web cope also cuts the near flange (o) back
+        // for the same length (otherwise it would be left floating).
+        const leftNearCope = processedCopes.find(c => c.end === 'left' && (c.location === 'near_flange' || c.location === 'both' || c.location === 'web'));
         const leftFarCope = processedCopes.find(c => c.end === 'left' && (c.location === 'far_flange' || c.location === 'both'));
-        const rightNearCope = processedCopes.find(c => c.end === 'right' && (c.location === 'near_flange' || c.location === 'both'));
+        const rightNearCope = processedCopes.find(c => c.end === 'right' && (c.location === 'near_flange' || c.location === 'both' || c.location === 'web'));
         const rightFarCope = processedCopes.find(c => c.end === 'right' && (c.location === 'far_flange' || c.location === 'both'));
+
+        // Web copes integrated into the v-face contour (only on ends without
+        // a miter - a miter on the same end keeps the cope on the generic path)
+        const leftWebCope = (!leftIsWebMiter && !leftIsFlangeMiter)
+            ? processedCopes.find(c => c.end === 'left' && c.location === 'web') : null;
+        const rightWebCope = (!rightIsWebMiter && !rightIsFlangeMiter)
+            ? processedCopes.find(c => c.end === 'right' && c.location === 'web') : null;
+
+        // A flange cope shallower than the flange width cuts a depth x length
+        // notch from the toe edge (fillet at the interior corner) instead of
+        // removing the whole flange. Full cutback still applies when the depth
+        // covers the flange, for web-location copes (the flange strip along
+        // the cut web edge must be freed), and on mitered ends.
+        const isPartialFlangeCope = (c) => !!c && c.location !== 'web' && c.depth > 0 && c.depth < w;
+        const oLeftPartial = (!leftIsFlangeMiter && !leftIsWebMiter && isPartialFlangeCope(leftNearCope)) ? leftNearCope : null;
+        const oRightPartial = (!rightIsFlangeMiter && !rightIsWebMiter && isPartialFlangeCope(rightNearCope)) ? rightNearCope : null;
+        const uLeftPartial = (!leftIsFlangeMiter && !leftIsWebMiter && isPartialFlangeCope(leftFarCope)) ? leftFarCope : null;
+        const uRightPartial = (!rightIsFlangeMiter && !rightIsWebMiter && isPartialFlangeCope(rightFarCope)) ? rightFarCope : null;
         
         let block = '';
         
@@ -735,8 +764,24 @@ class NC1Generator {
         // Web contour: Y=0 is near side, Y=h is far side
         block += this.formatAKLine('v', vLeftNear, 'u', 0);
         block += this.formatAKLine('', vRightNear, '', 0);
-        block += this.formatAKLine('', vRightFar, '', h);
-        
+
+        if (rightWebCope) {
+            // Right-end web cope: rise only to h-depth, step in, then up to
+            // the far edge. The interior-corner fillet is traced as a short
+            // polyline arc (radius-column conventions vary between machines).
+            block += this.formatAKLine('', vRightFar, '', h - rightWebCope.depth);
+            const rwr = rightWebCope.radius || 0;
+            const rwCornerX = vRightFar - rightWebCope.length;
+            if (rwr > 0) {
+                block += this.formatFilletArc(rwCornerX + rwr, h - rightWebCope.depth + rwr, rwr, -90);
+            } else {
+                block += this.formatAKLine('', rwCornerX, '', h - rightWebCope.depth);
+            }
+            block += this.formatAKLine('', rwCornerX, '', h);
+        } else {
+            block += this.formatAKLine('', vRightFar, '', h);
+        }
+
         // Add web notches (from right to left along far edge)
         for (let i = webNotches.length - 1; i >= 0; i--) {
             const notch = webNotches[i];
@@ -745,9 +790,24 @@ class NC1Generator {
             block += this.formatAKLine('', notch.x, '', h - notch.depth);
             block += this.formatAKLine('', notch.x, '', h);
         }
-        
-        block += this.formatAKLine('', vLeftFar, '', h);
-        block += this.formatAKLine('', vLeftNear, '', 0);
+
+        if (leftWebCope) {
+            // Left-end web cope: step down at the cope length, run to the left
+            // end at h-depth, then close. Interior-corner fillet traced as a
+            // short polyline arc.
+            block += this.formatAKLine('', leftWebCope.length, '', h);
+            const lwr = leftWebCope.radius || 0;
+            if (lwr > 0) {
+                block += this.formatFilletArc(leftWebCope.length - lwr, h - leftWebCope.depth + lwr, lwr, 0);
+            } else {
+                block += this.formatAKLine('', leftWebCope.length, '', h - leftWebCope.depth);
+            }
+            block += this.formatAKLine('', vLeftFar, '', h - leftWebCope.depth);
+            block += this.formatAKLine('', vLeftNear, '', 0);
+        } else {
+            block += this.formatAKLine('', vLeftFar, '', h);
+            block += this.formatAKLine('', vLeftNear, '', 0);
+        }
         
         // ========== o-face (near flange) ==========
         // Web miter (Near/Far): rectangle at farOffset (aligns with web's far edge)
@@ -761,32 +821,67 @@ class NC1Generator {
             oLeftTop = leftTopOffset;
             oLeftBottom = leftBottomOffset;
         } else if (leftIsWebMiter) {
-            // Rectangle at far offset (o-face aligns with far side of web)
-            oLeftTop = leftFarOffset;
-            oLeftBottom = leftFarOffset;
+            // Rectangle at far offset (o-face aligns with far side of web);
+            // a near-flange cope can cut the flange back further than the miter
+            const oLeftStart = Math.max(leftFarOffset, leftNearCope ? leftNearCope.length : 0);
+            oLeftTop = oLeftStart;
+            oLeftBottom = oLeftStart;
         } else {
-            const oLeftStart = leftNearCope ? leftNearCope.length : 0;
+            const oLeftStart = (leftNearCope && !oLeftPartial) ? leftNearCope.length : 0;
             oLeftTop = oLeftStart;
             oLeftBottom = oLeftStart;
         }
-        
+
         if (rightIsFlangeMiter) {
             oRightTop = length - rightTopOffset;
             oRightBottom = length - rightBottomOffset;
         } else if (rightIsWebMiter) {
-            oRightTop = length - rightFarOffset;
-            oRightBottom = length - rightFarOffset;
+            const oRightEnd = Math.min(length - rightFarOffset, rightNearCope ? length - rightNearCope.length : length);
+            oRightTop = oRightEnd;
+            oRightBottom = oRightEnd;
         } else {
-            const oRightEnd = rightNearCope ? length - rightNearCope.length : length;
+            const oRightEnd = (rightNearCope && !oRightPartial) ? length - rightNearCope.length : length;
             oRightTop = oRightEnd;
             oRightBottom = oRightEnd;
         }
         
         // Flange contour: Y=0 is at web, Y=w is at toes
         block += this.formatAKLine('o', oLeftTop, 'o', 0);
-        block += this.formatAKLine('', oLeftBottom, '', w);
-        block += this.formatAKLine('', oRightBottom, '', w);
-        block += this.formatAKLine('', oRightTop, '', 0);
+        if (oLeftPartial) {
+            // Partial-depth cope notch at the left end of the toe edge
+            block += this.formatAKLine('', 0, '', w - oLeftPartial.depth);
+            if (oLeftPartial.radius > 0) {
+                block += this.formatFilletArc(oLeftPartial.length - oLeftPartial.radius, w - oLeftPartial.depth + oLeftPartial.radius, oLeftPartial.radius, -90, 90);
+            } else {
+                block += this.formatAKLine('', oLeftPartial.length, '', w - oLeftPartial.depth);
+            }
+            block += this.formatAKLine('', oLeftPartial.length, '', w);
+        } else {
+            block += this.formatAKLine('', oLeftBottom, '', w);
+        }
+
+        // Near-flange notches cut in from the toe edge (left to right)
+        for (const notch of nearFlangeNotches) {
+            block += this.formatAKLine('', notch.x, '', w);
+            block += this.formatAKLine('', notch.x, '', w - notch.depth);
+            block += this.formatAKLine('', notch.x + notch.width, '', w - notch.depth);
+            block += this.formatAKLine('', notch.x + notch.width, '', w);
+        }
+
+        if (oRightPartial) {
+            // Partial-depth cope notch at the right end of the toe edge
+            block += this.formatAKLine('', length - oRightPartial.length, '', w);
+            if (oRightPartial.radius > 0) {
+                block += this.formatFilletArc(length - oRightPartial.length + oRightPartial.radius, w - oRightPartial.depth + oRightPartial.radius, oRightPartial.radius, 180, 90);
+            } else {
+                block += this.formatAKLine('', length - oRightPartial.length, '', w - oRightPartial.depth);
+            }
+            block += this.formatAKLine('', length, '', w - oRightPartial.depth);
+            block += this.formatAKLine('', length, '', 0);
+        } else {
+            block += this.formatAKLine('', oRightBottom, '', w);
+            block += this.formatAKLine('', oRightTop, '', 0);
+        }
         block += this.formatAKLine('', oLeftTop, '', 0);
         
         // ========== u-face (far flange) ==========
@@ -801,44 +896,70 @@ class NC1Generator {
             uLeftTop = leftTopOffset;
             uLeftBottom = leftBottomOffset;
         } else if (leftIsWebMiter) {
-            // Rectangle at near offset (u-face aligns with near side of web)
-            uLeftTop = leftNearOffset;
-            uLeftBottom = leftNearOffset;
+            // Rectangle at near offset (u-face aligns with near side of web);
+            // a far-flange cope can cut the flange back further than the miter
+            const uLeftStart = Math.max(leftNearOffset, leftFarCope ? leftFarCope.length : 0);
+            uLeftTop = uLeftStart;
+            uLeftBottom = uLeftStart;
         } else {
-            const uLeftStart = leftFarCope ? leftFarCope.length : 0;
+            const uLeftStart = (leftFarCope && !uLeftPartial) ? leftFarCope.length : 0;
             uLeftTop = uLeftStart;
             uLeftBottom = uLeftStart;
         }
-        
+
         if (rightIsFlangeMiter) {
             uRightTop = length - rightTopOffset;
             uRightBottom = length - rightBottomOffset;
         } else if (rightIsWebMiter) {
-            uRightTop = length - rightNearOffset;
-            uRightBottom = length - rightNearOffset;
+            const uRightEnd = Math.min(length - rightNearOffset, rightFarCope ? length - rightFarCope.length : length);
+            uRightTop = uRightEnd;
+            uRightBottom = uRightEnd;
         } else {
-            const uRightEnd = rightFarCope ? length - rightFarCope.length : length;
+            const uRightEnd = (rightFarCope && !uRightPartial) ? length - rightFarCope.length : length;
             uRightTop = uRightEnd;
             uRightBottom = uRightEnd;
         }
         
         // Flange contour: Y=0 is at web, Y=w is at toes
         block += this.formatAKLine('u', uLeftTop, 'o', 0);
-        block += this.formatAKLine('', uRightTop, '', 0);
-        block += this.formatAKLine('', uRightBottom, '', w);
-        block += this.formatAKLine('', uLeftBottom, '', w);
-        block += this.formatAKLine('', uLeftTop, '', 0);
-        
-        // Add IK blocks for web notches (internal cutouts on v-face)
-        for (const notch of webNotches) {
-            block += 'IK\n';
-            block += this.formatAKLine('v', notch.x, 'o', 0);
-            block += this.formatAKLine('', notch.x, '', notch.depth);
-            block += this.formatAKLine('', notch.x + notch.width, '', notch.depth);
-            block += this.formatAKLine('', notch.x + notch.width, '', 0);
-            block += this.formatAKLine('', notch.x, '', 0);
+        if (uRightPartial) {
+            // Partial-depth cope notch at the right end of the toe edge
+            block += this.formatAKLine('', length, '', 0);
+            block += this.formatAKLine('', length, '', w - uRightPartial.depth);
+            if (uRightPartial.radius > 0) {
+                block += this.formatFilletArc(length - uRightPartial.length + uRightPartial.radius, w - uRightPartial.depth + uRightPartial.radius, uRightPartial.radius, -90, -90);
+            } else {
+                block += this.formatAKLine('', length - uRightPartial.length, '', w - uRightPartial.depth);
+            }
+            block += this.formatAKLine('', length - uRightPartial.length, '', w);
+        } else {
+            block += this.formatAKLine('', uRightTop, '', 0);
+            block += this.formatAKLine('', uRightBottom, '', w);
         }
-        
+
+        // Far-flange notches cut in from the toe edge (right to left)
+        for (let i = farFlangeNotches.length - 1; i >= 0; i--) {
+            const notch = farFlangeNotches[i];
+            block += this.formatAKLine('', notch.x + notch.width, '', w);
+            block += this.formatAKLine('', notch.x + notch.width, '', w - notch.depth);
+            block += this.formatAKLine('', notch.x, '', w - notch.depth);
+            block += this.formatAKLine('', notch.x, '', w);
+        }
+
+        if (uLeftPartial) {
+            // Partial-depth cope notch at the left end of the toe edge
+            block += this.formatAKLine('', uLeftPartial.length, '', w);
+            if (uLeftPartial.radius > 0) {
+                block += this.formatFilletArc(uLeftPartial.length - uLeftPartial.radius, w - uLeftPartial.depth + uLeftPartial.radius, uLeftPartial.radius, 0, -90);
+            } else {
+                block += this.formatAKLine('', uLeftPartial.length, '', w - uLeftPartial.depth);
+            }
+            block += this.formatAKLine('', 0, '', w - uLeftPartial.depth);
+        } else {
+            block += this.formatAKLine('', uLeftBottom, '', w);
+        }
+        block += this.formatAKLine('', uLeftTop, '', 0);
+
         return block;
     }
     
@@ -1220,33 +1341,39 @@ class NC1Generator {
             // Determine X positions at bottom and top of v-face
             const vLeftBottom = leftIsFlangeMiter ? leftFarOffset : leftBottomOffset;
             const vLeftTop = leftIsFlangeMiter ? leftFarOffset : leftTopOffset;
-            const vRightBottom = leftIsFlangeMiter ? length - rightFarOffset : length - rightBottomOffset;
+            const vRightBottom = rightIsFlangeMiter ? length - rightFarOffset : length - rightBottomOffset;
             const vRightTop = rightIsFlangeMiter ? length - rightFarOffset : length - rightTopOffset;
             
             block += this.formatAKLine('v', vLeftBottom, 'u', startY);
-            
+
             // Left bottom cope step down
             if (leftBottomCope) {
-                block += this.formatAKLine('', leftBottomCope.length, '', leftBottomCope.depth);
+                if (leftBottomCope.radius > 0) {
+                    block += this.formatFilletArc(leftBottomCope.length - leftBottomCope.radius, leftBottomCope.depth - leftBottomCope.radius, leftBottomCope.radius, 90);
+                } else {
+                    block += this.formatAKLine('', leftBottomCope.length, '', leftBottomCope.depth);
+                }
                 block += this.formatAKLine('', leftBottomCope.length, '', 0);
             }
-            
+
             // Right bottom cope step up
             if (rightBottomCope) {
                 block += this.formatAKLine('', length - rightBottomCope.length, '', 0);
-                block += this.formatAKLine('', length - rightBottomCope.length, '', rightBottomCope.depth);
+                if (rightBottomCope.radius > 0) {
+                    block += this.formatFilletArc(length - rightBottomCope.length + rightBottomCope.radius, rightBottomCope.depth - rightBottomCope.radius, rightBottomCope.radius, 180);
+                } else {
+                    block += this.formatAKLine('', length - rightBottomCope.length, '', rightBottomCope.depth);
+                }
                 block += this.formatAKLine('', vRightBottom, '', rightBottomCope.depth);
             } else {
                 block += this.formatAKLine('', vRightBottom, '', 0);
             }
-            
+
             // Right top cope step down
             if (rightTopCope) {
                 block += this.formatAKLine('', vRightTop, '', h - rightTopCope.depth);
                 if (rightTopCope.radius > 0) {
-                    // Arc at inside corner - negative radius for counter-clockwise
-                    block += this.formatAKLineWithRadius('', length - rightTopCope.length + rightTopCope.radius, '', h - rightTopCope.depth, -rightTopCope.radius);
-                    block += this.formatAKLine('', length - rightTopCope.length, '', h - rightTopCope.depth + rightTopCope.radius);
+                    block += this.formatFilletArc(length - rightTopCope.length + rightTopCope.radius, h - rightTopCope.depth + rightTopCope.radius, rightTopCope.radius, -90);
                 } else {
                     block += this.formatAKLine('', length - rightTopCope.length, '', h - rightTopCope.depth);
                 }
@@ -1267,12 +1394,16 @@ class NC1Generator {
             // Left top cope step up
             if (leftTopCope) {
                 block += this.formatAKLine('', leftTopCope.length, '', h);
-                block += this.formatAKLine('', leftTopCope.length, '', h - leftTopCope.depth);
+                if (leftTopCope.radius > 0) {
+                    block += this.formatFilletArc(leftTopCope.length - leftTopCope.radius, h - leftTopCope.depth + leftTopCope.radius, leftTopCope.radius, 0);
+                } else {
+                    block += this.formatAKLine('', leftTopCope.length, '', h - leftTopCope.depth);
+                }
                 block += this.formatAKLine('', vLeftTop, '', h - leftTopCope.depth);
             } else {
                 block += this.formatAKLine('', vLeftTop, '', h);
             }
-            
+
             // Close contour
             block += this.formatAKLine('', vLeftBottom, '', startY);
             
@@ -1287,23 +1418,35 @@ class NC1Generator {
             const hRightTop = rightIsFlangeMiter ? length - rightNearOffset : length - rightTopOffset;
             
             block += this.formatAKLine('h', hLeftBottom, 'u', startY);
-            
+
             if (leftBottomCope) {
-                block += this.formatAKLine('', leftBottomCope.length, '', leftBottomCope.depth);
+                if (leftBottomCope.radius > 0) {
+                    block += this.formatFilletArc(leftBottomCope.length - leftBottomCope.radius, leftBottomCope.depth - leftBottomCope.radius, leftBottomCope.radius, 90);
+                } else {
+                    block += this.formatAKLine('', leftBottomCope.length, '', leftBottomCope.depth);
+                }
                 block += this.formatAKLine('', leftBottomCope.length, '', 0);
             }
-            
+
             if (rightBottomCope) {
                 block += this.formatAKLine('', length - rightBottomCope.length, '', 0);
-                block += this.formatAKLine('', length - rightBottomCope.length, '', rightBottomCope.depth);
+                if (rightBottomCope.radius > 0) {
+                    block += this.formatFilletArc(length - rightBottomCope.length + rightBottomCope.radius, rightBottomCope.depth - rightBottomCope.radius, rightBottomCope.radius, 180);
+                } else {
+                    block += this.formatAKLine('', length - rightBottomCope.length, '', rightBottomCope.depth);
+                }
                 block += this.formatAKLine('', hRightBottom, '', rightBottomCope.depth);
             } else {
                 block += this.formatAKLine('', hRightBottom, '', 0);
             }
-            
+
             if (rightTopCope) {
                 block += this.formatAKLine('', hRightTop, '', h - rightTopCope.depth);
-                block += this.formatAKLine('', length - rightTopCope.length, '', h - rightTopCope.depth);
+                if (rightTopCope.radius > 0) {
+                    block += this.formatFilletArc(length - rightTopCope.length + rightTopCope.radius, h - rightTopCope.depth + rightTopCope.radius, rightTopCope.radius, -90);
+                } else {
+                    block += this.formatAKLine('', length - rightTopCope.length, '', h - rightTopCope.depth);
+                }
                 block += this.formatAKLine('', length - rightTopCope.length, '', h);
             } else {
                 block += this.formatAKLine('', hRightTop, '', h);
@@ -1319,12 +1462,16 @@ class NC1Generator {
             
             if (leftTopCope) {
                 block += this.formatAKLine('', leftTopCope.length, '', h);
-                block += this.formatAKLine('', leftTopCope.length, '', h - leftTopCope.depth);
+                if (leftTopCope.radius > 0) {
+                    block += this.formatFilletArc(leftTopCope.length - leftTopCope.radius, h - leftTopCope.depth + leftTopCope.radius, leftTopCope.radius, 0);
+                } else {
+                    block += this.formatAKLine('', leftTopCope.length, '', h - leftTopCope.depth);
+                }
                 block += this.formatAKLine('', hLeftTop, '', h - leftTopCope.depth);
             } else {
                 block += this.formatAKLine('', hLeftTop, '', h);
             }
-            
+
             block += this.formatAKLine('', hLeftBottom, '', startY);
         }
         
@@ -1726,11 +1873,9 @@ class NC1Generator {
                     block += this.formatAKLinePlate('v', toStockX(pt.x), 'u', toStockY(pt.y));
                 }
             } else {
-                // Has arcs - splice arc into the corner path
-                const arc = arcs[0];
-                const arcStart = { x: arc.startPoint.x, y: arc.startPoint.y };
-                const arcEnd = { x: arc.endPoint.x, y: arc.endPoint.y };
-                
+                // Has arcs - splice every arc into the corner path at its
+                // position along the perimeter
+
                 // Calculate perimeter distance for each corner point
                 // Use cumulative distance along the path
                 const perimDists = [0];
@@ -1740,7 +1885,7 @@ class NC1Generator {
                     perimDists.push(perimDists[i-1] + Math.sqrt(dx*dx + dy*dy));
                 }
                 const totalPerim = perimDists[perimDists.length - 1];
-                
+
                 // Find perimeter position for a point by projecting onto path segments
                 const getPerimDist = (pt) => {
                     let bestDist = Infinity;
@@ -1762,55 +1907,41 @@ class NC1Generator {
                     }
                     return bestPerim;
                 };
-                
-                let arcStartDist = getPerimDist(arcStart);
-                let arcEndDist = getPerimDist(arcEnd);
-                let arcPts = arc.points;
-                
-                if (arcStartDist > arcEndDist) {
-                    const tmp = arcStartDist;
-                    arcStartDist = arcEndDist;
-                    arcEndDist = tmp;
-                    arcPts = [...arc.points].reverse();
-                }
-                
-                console.log('Arc perim dists: start=' + arcStartDist.toFixed(1) + ' end=' + arcEndDist.toFixed(1) + ' total=' + totalPerim.toFixed(1));
-                
-                // Output path: corners before arc, then arc, then corners after arc
-                let arcInserted = false;
-                
+
+                // One splice event per arc, ordered by where it enters the path
+                const events = arcs.map(arc => {
+                    let startDist = getPerimDist(arc.startPoint);
+                    let endDist = getPerimDist(arc.endPoint);
+                    let pts = arc.points;
+                    if (startDist > endDist) {
+                        const tmp = startDist;
+                        startDist = endDist;
+                        endDist = tmp;
+                        pts = [...arc.points].reverse();
+                    }
+                    return { startDist, endDist, pts };
+                }).sort((a, b) => a.startDist - b.startDist);
+
+                console.log('Arc perim dists: ' + events.map(e => e.startDist.toFixed(1) + '-' + e.endDist.toFixed(1)).join(', ') + ' total=' + totalPerim.toFixed(1));
+
                 // Output first point
                 block += this.formatAKLinePlate('v', toStockX(cornerPts[0].x), 'u', toStockY(cornerPts[0].y));
-                
+
+                let e = 0;
                 for (let i = 1; i < cornerPts.length; i++) {
-                    const segStart = perimDists[i-1];
-                    const segEnd = perimDists[i];
-                    
-                    if (!arcInserted && arcStartDist >= segStart && arcStartDist <= segEnd) {
-                        // Arc starts in this segment - output arc start
-                        block += this.formatAKLinePlate('v', toStockX(arcPts[0].x), 'u', toStockY(arcPts[0].y));
-                        // Arc polyline
-                        for (let j = 1; j < arcPts.length - 1; j++) {
-                            block += this.formatAKLinePlate('v', toStockX(arcPts[j].x), 'u', toStockY(arcPts[j].y));
+                    // Splice in any arc that enters the path before this corner
+                    while (e < events.length && events[e].startDist <= perimDists[i]) {
+                        const ev = events[e];
+                        for (const pt of ev.pts) {
+                            block += this.formatAKLinePlate('v', toStockX(pt.x), 'u', toStockY(pt.y));
                         }
-                        // Arc end
-                        block += this.formatAKLinePlate('v', toStockX(arcPts[arcPts.length-1].x), 'u', toStockY(arcPts[arcPts.length-1].y));
-                        arcInserted = true;
-                        
                         // Skip corners within the arc span
-                        while (i < cornerPts.length - 1 && perimDists[i] <= arcEndDist) {
+                        while (i < cornerPts.length - 1 && perimDists[i] <= ev.endDist) {
                             i++;
                         }
-                        // Output corner after arc
-                        if (i < cornerPts.length) {
-                            block += this.formatAKLinePlate('v', toStockX(cornerPts[i].x), 'u', toStockY(cornerPts[i].y));
-                        }
-                    } else if (arcInserted || arcStartDist > segEnd) {
-                        // Normal corner point
-                        block += this.formatAKLinePlate('v', toStockX(cornerPts[i].x), 'u', toStockY(cornerPts[i].y));
-                    } else {
-                        block += this.formatAKLinePlate('v', toStockX(cornerPts[i].x), 'u', toStockY(cornerPts[i].y));
+                        e++;
                     }
+                    block += this.formatAKLinePlate('v', toStockX(cornerPts[i].x), 'u', toStockY(cornerPts[i].y));
                 }
             }
         } else {
@@ -1933,6 +2064,24 @@ class NC1Generator {
     }
     
     /**
+     * Emit a quarter-circle fillet at a re-entrant contour corner as a short
+     * polyline arc. Radius-column conventions vary between DSTV consumers
+     * (ProCAM reads it as an arc over the whole next segment), so tracing the
+     * fillet explicitly renders and cuts the same everywhere.
+     * cx/cy: fillet center; startDeg: angle of the first tangent point;
+     * sweepDeg: signed sweep to the second tangent point (default 90 degrees
+     * clockwise; pass +90 when the contour walks the corner counter-clockwise).
+     */
+    formatFilletArc(cx, cy, r, startDeg, sweepDeg = -90) {
+        let out = '';
+        for (let i = 0; i <= this.FILLET_SEGMENTS; i++) {
+            const a = (startDeg + sweepDeg * (i / this.FILLET_SEGMENTS)) * Math.PI / 180;
+            out += this.formatAKLine('', cx + r * Math.cos(a), '', cy + r * Math.sin(a));
+        }
+        return out;
+    }
+
+    /**
      * Format an AK contour line (for HSS, Channel, WF, etc.)
      */
     formatAKLine(face, x, yRef, y) {
@@ -1946,7 +2095,8 @@ class NC1Generator {
     
     /**
      * Format an AK contour line with radius (for HSS, Channel, WF, Pipe copes, etc.)
-     * Radius is in column 5 (after X, Y, Z, DZ)
+     * In DSTV AK format the radius is the first value after Y: a radius on a
+     * vertex rounds that corner (fillet). Consumers like ProCAM read it there.
      */
     formatAKLineWithRadius(face, x, yRef, y, radius) {
         const faceStr = face ? ('  ' + face) : '   ';
@@ -1954,7 +2104,7 @@ class NC1Generator {
         const yRefStr = yRef || ' ';
         const yStr = y.toFixed(2).padStart(10);
         const radiusStr = radius.toFixed(2).padStart(11);
-        return faceStr + xStr + yRefStr + yStr + '       0.00       0.00' + radiusStr + '       0.00       0.00\n';
+        return faceStr + xStr + yRefStr + yStr + radiusStr + '       0.00       0.00       0.00       0.00\n';
     }
     
     /**
@@ -2022,12 +2172,20 @@ class NC1Generator {
             }
         }
         
-        // For HSS tubes, notches and copes are handled in generateRectTubeContours
-        // For other profiles, handle notches and copes separately
+        // For HSS tubes and channels, notches and copes are integrated into the
+        // profile contours (generateRectTubeContours / generateChannelContours);
+        // emitting them again here would give the machine two cut definitions.
+        // The one channel case the contours don't handle is a web cope on an
+        // end that also has a miter - only that stays on this generic path.
         const profileType = part.shape.profileType;
         const isHSS = profileType === 'HSS_SQUARE' || profileType === 'HSS_RECT';
-        const notches = isHSS ? [] : part.operations.filter(op => op.type === 'notch');
-        const copesToProcess = isHSS ? [] : copes;
+        const isChannel = profileType === 'CHANNEL';
+        const leftHasMiter = !!part.operations.find(op => op.type === 'endConditionLeft' && op.cutType === 'miter');
+        const rightHasMiter = !!part.operations.find(op => op.type === 'endConditionRight' && op.cutType === 'miter');
+        const notches = (isHSS || isChannel) ? [] : part.operations.filter(op => op.type === 'notch');
+        const copesToProcess = isHSS ? [] :
+            isChannel ? copes.filter(c => c.location === 'web' &&
+                (c.end === 'left' ? leftHasMiter : rightHasMiter)) : copes;
         
         // Generate hole blocks (BO)
         if (holes.length > 0) {
@@ -2258,23 +2416,35 @@ class NC1Generator {
         // Copes - use AK for external contour modifications
         copes.forEach(cope => {
             block += 'AK\n';
-            
+
             // Determine face based on cope location
             let face = 'o';  // Top
             if (cope.location === 'bottom') face = 'u';
-            
-            const startX = cope.end === 'start' ? 0 : (part.length * scale - cope.length * scale);
-            const endX = cope.end === 'start' ? (cope.length * scale) : (part.length * scale);
+            if (cope.location === 'web') face = 'v';
+
+            // The operation form saves 'left'/'right'; older data may say 'start'/'end'
+            const atStart = cope.end === 'start' || cope.end === 'left';
+            const startX = atStart ? 0 : (part.length * scale - cope.length * scale);
+            const endX = atStart ? (cope.length * scale) : (part.length * scale);
             const depth = cope.depth * scale;
             const radius = cope.radius * scale;
-            
-            // Cope contour points using proper formatting
-            if (radius > 0) {
+
+            // Cope contour: vertical cut at the interior X, along the depth to the
+            // part end, back up, and close along the surface. The radius chamfers
+            // the interior corner (arc as a corner point - simplified for now).
+            if (radius > 0 && atStart) {
+                block += this.formatAKLine(face, startX, 'o', 0);
+                block += this.formatAKLine('', startX, '', depth);
+                block += this.formatAKLine('', endX - radius, '', depth);
+                block += this.formatAKLine('', endX, '', depth - radius);
+                block += this.formatAKLine('', endX, '', 0);
+                block += this.formatAKLine('', startX, '', 0);
+            } else if (radius > 0) {
                 block += this.formatAKLine(face, startX, 'o', 0);
                 block += this.formatAKLine('', startX, '', depth - radius);
-                // Arc point would need radius in column - simplified for now
                 block += this.formatAKLine('', startX + radius, '', depth);
                 block += this.formatAKLine('', endX, '', depth);
+                block += this.formatAKLine('', endX, '', 0);
                 block += this.formatAKLine('', startX, '', 0);
             } else {
                 block += this.formatAKLine(face, startX, 'o', 0);
