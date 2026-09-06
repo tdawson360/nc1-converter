@@ -32,4 +32,4 @@ This is a static site ready for deployment on Vercel, Netlify, or any static hos
 
 ## Version
 
-v1.12.5
+v2.0.0

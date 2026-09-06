@@ -1,7 +1,7 @@
 /**
  * NC1 Converter - DSTV/NC1 File Generator
  * Generates NC1 files compliant with DSTV standard
- * Version: 1.12.5
+ * Version: 2.0.0
  */
 
 class NC1Generator {
@@ -10,7 +10,7 @@ class NC1Generator {
         this.INCH_TO_MM = 25.4;
         // Polyline segments used to trace a corner fillet arc
         this.FILLET_SEGMENTS = 8;
-        console.log('NC1Generator v1.12.5 loaded');
+        console.log('NC1Generator v2.0.0 loaded');
     }
     
     /**
@@ -1181,6 +1181,14 @@ class NC1Generator {
             width: n.width * scale,
             depth: n.depth * scale
         })).sort((a, b) => a.x - b.x);  // Sort by x position
+
+        // Bottom notches cut in from the y=0 edge of the web faces and
+        // through the u (bottom) face
+        const bottomNotches = (notches || []).filter(n => n.location === 'bottom').map(n => ({
+            x: n.x * scale,
+            width: n.width * scale,
+            depth: n.depth * scale
+        })).sort((a, b) => a.x - b.x);
         
         // Process copes - convert to mm
         const processedCopes = (copes || []).map(c => ({
@@ -1356,6 +1364,14 @@ class NC1Generator {
                 block += this.formatAKLine('', leftBottomCope.length, '', 0);
             }
 
+            // Bottom notches (left to right along the bottom edge)
+            for (const notch of bottomNotches) {
+                block += this.formatAKLine('', notch.x, '', 0);
+                block += this.formatAKLine('', notch.x, '', notch.depth);
+                block += this.formatAKLine('', notch.x + notch.width, '', notch.depth);
+                block += this.formatAKLine('', notch.x + notch.width, '', 0);
+            }
+
             // Right bottom cope step up
             if (rightBottomCope) {
                 block += this.formatAKLine('', length - rightBottomCope.length, '', 0);
@@ -1426,6 +1442,13 @@ class NC1Generator {
                     block += this.formatAKLine('', leftBottomCope.length, '', leftBottomCope.depth);
                 }
                 block += this.formatAKLine('', leftBottomCope.length, '', 0);
+            }
+
+            for (const notch of bottomNotches) {
+                block += this.formatAKLine('', notch.x, '', 0);
+                block += this.formatAKLine('', notch.x, '', notch.depth);
+                block += this.formatAKLine('', notch.x + notch.width, '', notch.depth);
+                block += this.formatAKLine('', notch.x + notch.width, '', 0);
             }
 
             if (rightBottomCope) {
@@ -1569,6 +1592,16 @@ class NC1Generator {
         block += this.formatAKLine('', uRightNear, '', 0);
         block += this.formatAKLine('', uLeftNear, '', 0);
         
+        // Add IK blocks for each bottom notch on u-face (cutouts)
+        for (const notch of bottomNotches) {
+            block += 'IK\n';
+            block += this.formatAKLine('u', notch.x, 'o', 0);
+            block += this.formatAKLine('', notch.x, '', w);
+            block += this.formatAKLine('', notch.x + notch.width, '', w);
+            block += this.formatAKLine('', notch.x + notch.width, '', 0);
+            block += this.formatAKLine('', notch.x, '', 0);
+        }
+
         // ========== Slotted End Connections ==========
         // Slot is OPEN at tube end, semicircle at inner end
         // Use BO format with 'l' marker - position so tube-end semicircle "floats" past edge
@@ -1820,6 +1853,10 @@ class NC1Generator {
                     // Notch step at NL on the left edge going up
                     // Already started at (cNL_X, 0), now step to (cNL_X, cNL_Y) then (0, cNL_Y)
                     pts.push({ x: cNL_X, y: cNL_Y });
+                    pts.push({ x: 0, y: cNL_Y });
+                } else if ((corners.nearLeft.type === 'chamfer' || corners.nearLeft.type === 'diagonal') && cNL_X > 0) {
+                    // Second point of the NL diagonal, on the left edge. Without
+                    // it the cut ran from (cNL_X, 0) straight to the FL corner.
                     pts.push({ x: 0, y: cNL_Y });
                 }
                 
@@ -2146,12 +2183,17 @@ class NC1Generator {
         const copes = part.operations.filter(op => op.type === 'cope');
         const marks = part.operations.filter(op => op.type === 'layoutMark');
         
+        // A plate, and a channel web, is a single plate: a "thru" feature on
+        // the v/h axis is one feature on v. Emitting h as well gave a duplicate
+        // BO line on plates and a hole on a face channels never define.
+        const singleWebPlate = part.shape.profileType === 'FLAT' || part.shape.profileType === 'CHANNEL';
+
         // Expand thruHoles into two holes on opposite faces
         for (const th of thruHoles) {
             if (th.axis === 'vertical') {
                 // Through front/back (v/h faces)
                 holes.push({ type: 'hole', face: 'v', x: th.x, y: th.y, diameter: th.diameter });
-                holes.push({ type: 'hole', face: 'h', x: th.x, y: th.y, diameter: th.diameter });
+                if (!singleWebPlate) holes.push({ type: 'hole', face: 'h', x: th.x, y: th.y, diameter: th.diameter });
             } else {
                 // Through top/bottom (o/u faces)
                 holes.push({ type: 'hole', face: 'o', x: th.x, y: th.y, diameter: th.diameter });
@@ -2164,7 +2206,7 @@ class NC1Generator {
             if (ts.axis === 'vertical') {
                 // Through front/back (v/h faces)
                 slots.push({ type: 'slot', face: 'v', x: ts.x, y: ts.y, length: ts.length, width: ts.width, angle: ts.angle, endType: 'round' });
-                slots.push({ type: 'slot', face: 'h', x: ts.x, y: ts.y, length: ts.length, width: ts.width, angle: ts.angle, endType: 'round' });
+                if (!singleWebPlate) slots.push({ type: 'slot', face: 'h', x: ts.x, y: ts.y, length: ts.length, width: ts.width, angle: ts.angle, endType: 'round' });
             } else {
                 // Through top/bottom (o/u faces)
                 slots.push({ type: 'slot', face: 'o', x: ts.x, y: ts.y, length: ts.length, width: ts.width, angle: ts.angle, endType: 'round' });

@@ -1,0 +1,24 @@
+{
+  "partMark": "P7",
+  "quantity": 1,
+  "shape": {
+    "profileType": "FLAT",
+    "designation": "1/2\" x 12\"",
+    "dimensions": { "thickness": 0.5, "width": 12 }
+  },
+  "length": 24,
+  "partDefinition": {
+    "partWidth": 8,
+    "partLength": 18,
+    "position": "near",
+    "clipHolesToContour": false,
+    "clipCircle": null,
+    "corners": {
+      "nearLeft": { "type": "chamfer", "dimX": 1, "dimY": 1 },
+      "farLeft": { "type": "diagonal", "dimX": 2, "dimY": 1 },
+      "nearRight": { "type": "chamfer", "dimX": 1, "dimY": 1 },
+      "farRight": { "type": "square", "dimX": 0, "dimY": 0 }
+    }
+  },
+  "operations": []
+}

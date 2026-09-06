@@ -1,0 +1,14 @@
+{
+  "partMark": "P8",
+  "quantity": 1,
+  "shape": {
+    "profileType": "FLAT",
+    "designation": "1/2\" x 6\"",
+    "dimensions": { "thickness": 0.5, "width": 6 }
+  },
+  "length": 24,
+  "operations": [
+    { "type": "thruHole", "axis": "vertical", "x": 6, "y": 2, "diameter": 0.8125 },
+    { "type": "thruSlot", "axis": "vertical", "x": 12, "y": 3, "length": 2, "width": 0.8125, "angle": 0 }
+  ]
+}

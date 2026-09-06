@@ -1,0 +1,15 @@
+{
+  "partMark": "T9",
+  "quantity": 1,
+  "shape": {
+    "profileType": "HSS_RECT",
+    "designation": "HSS6X4X1/4",
+    "dimensions": { "height": 6, "width": 4, "tdes": 0.233, "tnom": 0.25 }
+  },
+  "length": 48,
+  "operations": [
+    { "type": "notch", "location": "bottom", "x": 10, "y": 0, "width": 3, "depth": 1, "radius": 0 },
+    { "type": "notch", "location": "top", "x": 30, "y": 0, "width": 2, "depth": 1.5, "radius": 0 },
+    { "type": "notch", "location": "bottom", "x": 36, "y": 0, "width": 2, "depth": 0.75, "radius": 0 }
+  ]
+}

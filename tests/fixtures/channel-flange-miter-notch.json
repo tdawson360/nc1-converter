@@ -4,13 +4,48 @@
   "shape": {
     "profileType": "CHANNEL",
     "designation": "C6X13",
-    "dimensions": { "depth": 6, "flange_width": 2.157, "web_thickness": 0.437, "flange_thickness": 0.343 }
+    "dimensions": {
+      "depth": 6,
+      "flange_width": 2.157,
+      "web_thickness": 0.437,
+      "flange_thickness": 0.343,
+      "k": 0.813
+    }
   },
   "length": 48,
   "operations": [
-    { "type": "endConditionLeft", "cutType": "miter", "webAngle": 45, "longPointLocation": "top" },
-    { "type": "notch", "face": "v", "location": "web", "x": 12, "y": 0, "width": 2, "depth": 1, "radius": 0 },
-    { "type": "notch", "face": "v", "location": "near_flange", "x": 24, "y": 0, "width": 2, "depth": 1, "radius": 0 },
-    { "type": "hole", "face": "v", "x": 30, "y": 3, "diameter": 0.8125 }
+    {
+      "type": "endConditionLeft",
+      "cutType": "miter",
+      "webAngle": 45,
+      "longPointLocation": "top"
+    },
+    {
+      "type": "notch",
+      "face": "v",
+      "location": "web",
+      "x": 12,
+      "y": 0,
+      "width": 2,
+      "depth": 1,
+      "radius": 0
+    },
+    {
+      "type": "notch",
+      "face": "v",
+      "location": "near_flange",
+      "x": 24,
+      "y": 0,
+      "width": 2,
+      "depth": 1,
+      "radius": 0
+    },
+    {
+      "type": "hole",
+      "face": "v",
+      "x": 30,
+      "y": 3,
+      "diameter": 0.8125
+    }
   ]
 }

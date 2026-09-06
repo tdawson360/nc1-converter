@@ -1,6 +1,6 @@
 # NC1 Converter Project
 
-## Version 1.11
+## Version 2.0.0
 
 ### Features
 - HSS Square/Rectangular tube support with:
@@ -102,6 +102,14 @@ Slots use BO format with 'l' marker after depth value.
 - No depth field for angles
 
 ### Version History
+- v2.0.0 (built with Claude Fable 5.1): Custom-plate near-left chamfer/diagonal emitted
+  the wrong contour (diagonal ran to the far-left corner) - fixed. Channel header fillet
+  radius was always 0.00 because the shape data had no k; added AISC v15 kdes to all 72
+  C/MC channels (radius = k - tf, C8X11.5 = 13.92 mm). HSS bottom notches were silently
+  dropped - now cut on v/h faces with a u-face IK cutout. Thru hole/slot hidden for
+  plates, angles, pipes and round HSS (they emitted a duplicate or nonexistent face);
+  on plates and channel webs a v/h-axis thru feature is now a single v feature.
+  New golden fixtures: flat-custom-nl-chamfer, hss-rect-bottom-notch, flat-thru-hole.
 - v1.12.5: Golden-file test harness (npm test). Channel copes/notches integrated into
   profile contours (were double/triple-emitted); channel web cope cuts web + near flange
   with polyline fillet; flange copes honor depth/radius (were full cutback always);

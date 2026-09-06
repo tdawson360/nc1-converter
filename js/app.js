@@ -357,7 +357,8 @@ class NC1ConverterApp {
                     depth: shape.depth,
                     flange_width: shape.flange_width,
                     web_thickness: shape.web_thickness,
-                    flange_thickness: shape.flange_thickness
+                    flange_thickness: shape.flange_thickness,
+                    k: shape.k  // AISC kdes; header fillet radius = k - tf
                 });
             }
             
@@ -705,10 +706,17 @@ class NC1ConverterApp {
         const isHSS = profileType === 'HSS_RECT' || profileType === 'HSS_SQUARE';
         const isChannel = profileType === 'CHANNEL';
         const supportsCopeNotch = isHSS || isChannel;
-        
+        // Thru holes/slots need a pair of opposite faces. A plate hole is
+        // already through; pipes are one unrolled face; an angle hole goes
+        // through one leg only.
+        const supportsThru = isHSS || isChannel;
+
         // Update dropdown options
         Array.from(opTypeSelect.options).forEach(opt => {
-            if (opt.value === 'endConditionLeft') {
+            if (opt.value === 'thruHole' || opt.value === 'thruSlot') {
+                opt.style.display = supportsThru ? '' : 'none';
+                opt.disabled = !supportsThru;
+            } else if (opt.value === 'endConditionLeft') {
                 opt.disabled = hasLeftEnd;
                 opt.textContent = hasLeftEnd ? 'End Condition - Left (already defined)' : 'End Condition - Left';
             } else if (opt.value === 'endConditionRight') {
