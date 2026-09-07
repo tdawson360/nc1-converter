@@ -1,6 +1,6 @@
 # NC1 Converter Project
 
-## Version 2.0.0
+## Version 2.1.0
 
 ### Features
 - HSS Square/Rectangular tube support with:
@@ -101,7 +101,29 @@ Slots use BO format with 'l' marker after depth value.
 - Separate BO blocks per face
 - No depth field for angles
 
+### Recent Parts, Mirror, Duplicate, Import/Export (v2.1.0)
+- **Recent Parts** (sidebar): the last 50 parts downloaded or copied are kept in the
+  browser's localStorage (per person, per browser). Load puts a part back into the form
+  for editing; re-downloading updates the same entry. Save to Recent Parts stores the
+  current part without downloading.
+- **Export / Import JSON**: a part as a `.part.json` file, for sharing between people or
+  keeping with the job. Import loads it into the form.
+- **Mirror: Swap Ends**: reflection across mid-length. X becomes length minus X, end
+  conditions and copes trade ends, plate corners swap left/right. Any profile.
+- **Mirror: Flip Near/Far**: reflection across mid-width. Same cuts at the same end,
+  flanges on the opposite side - the opposite-hand stair stringer. Channel: o/u faces,
+  near/far miter long points, near/far flange copes and notches, and web/web_far cuts
+  swap; web-face Y flips. HSS: v/h faces swap, o/u Y flips. Plates and pipes: Y flips.
+  Not available for angles (the L section is not symmetric across that plane).
+- Both mirrors produce a new part with the mark suffixed "-M" for renaming.
+- Channel copes and notches gained a **web_far** location: a web cut from the
+  far-flange (y=0) edge, the mirror image of the existing near-side web cut.
+
 ### Version History
+- v2.1.0 (Claude Fable 5.1): Recent Parts history, Export/Import JSON, Duplicate,
+  Mirror: Swap Ends, Mirror: Flip Near/Far. Channel web copes/notches from the far
+  flange side (web_far). Part.toJSON/clone now include partDefinition.
+  New golden: channel-web-far-cope. New tests: transform.test.js.
 - v2.0.0 (built with Claude Fable 5.1): Custom-plate near-left chamfer/diagonal emitted
   the wrong contour (diagonal ran to the far-left corner) - fixed. Channel header fillet
   radius was always 0.00 because the shape data had no k; added AISC v15 kdes to all 72

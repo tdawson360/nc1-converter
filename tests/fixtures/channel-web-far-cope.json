@@ -1,0 +1,16 @@
+{
+  "partMark": "S2-M",
+  "quantity": 1,
+  "shape": {
+    "profileType": "CHANNEL",
+    "designation": "C6X8.2",
+    "dimensions": { "depth": 6, "flange_width": 1.92, "web_thickness": 0.2, "flange_thickness": 0.343, "k": 0.813 }
+  },
+  "length": 96,
+  "operations": [
+    { "type": "cope", "end": "left", "location": "web_far", "depth": 2, "length": 4, "radius": 0.5 },
+    { "type": "cope", "end": "right", "location": "web_far", "depth": 1.5, "length": 3, "radius": 0 },
+    { "type": "notch", "location": "web_far", "x": 40, "y": 0, "width": 2, "depth": 1, "radius": 0 },
+    { "type": "hole", "face": "v", "x": 20, "y": 4, "diameter": 0.8125 }
+  ]
+}

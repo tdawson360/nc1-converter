@@ -12,19 +12,35 @@
         <aside class="sidebar">
             <header class="app-header">
                 <h1 class="app-title">NC1 Converter</h1>
-                <p class="app-subtitle">DSTV File Generator v2.0.0</p>
+                <p class="app-subtitle">DSTV File Generator v2.1.0</p>
             </header>
             
-            <!-- Parts List (future: multiple parts) -->
-            <div class="parts-list">
-                <div class="card">
-                    <div class="card-header">Current Part</div>
-                    <div id="currentPartSummary" class="text-muted text-sm">
-                        No part defined
+            <!-- Current part: summary and actions -->
+            <div class="card">
+                <div class="card-header">Current Part</div>
+                <div id="currentPartSummary" class="text-muted text-sm">No part defined</div>
+                <div class="sidebar-actions">
+                    <button id="saveToHistory" class="btn btn-secondary btn-sm btn-block">Save to Recent Parts</button>
+                    <button id="mirrorEnds" class="btn btn-secondary btn-sm btn-block"
+                        title="Reflect end for end: every X becomes length minus X, end conditions trade ends">Mirror: Swap Ends</button>
+                    <button id="mirrorNearFar" class="btn btn-secondary btn-sm btn-block"
+                        title="Same cuts at the same end, flanges on the opposite side (stair stringers)">Mirror: Flip Near/Far</button>
+                    <button id="duplicatePart" class="btn btn-secondary btn-sm btn-block">Duplicate</button>
+                    <div class="sidebar-row">
+                        <button id="exportPart" class="btn btn-secondary btn-sm">Export JSON</button>
+                        <button id="importPart" class="btn btn-secondary btn-sm">Import JSON</button>
+                        <input type="file" id="importPartFile" accept=".json,application/json" class="hidden">
                     </div>
                 </div>
             </div>
-            
+
+            <!-- Recent parts (stored in this browser only) -->
+            <div class="card">
+                <div class="card-header">Recent Parts</div>
+                <div id="historyList" class="history-list"></div>
+                <small class="text-muted">Saved here when you download or copy. Kept in this browser only; use Export JSON to share a part.</small>
+            </div>
+
             <!-- Action Buttons -->
             <div class="mt-4">
                 <button id="clearPart" class="btn btn-secondary btn-block">
@@ -294,13 +310,15 @@
         </div>
     </div>
     
-    <!-- Scripts (keep the ?v= version in sync across ALL five on every release
-         so deployed users never get a mix of cached old and new files) -->
-    <script src="js/shapes-data.js?v=2.0.0"></script>
-    <script src="js/models.js?v=2.0.0"></script>
-    <script src="js/utils.js?v=2.0.0"></script>
-    <script src="js/nc1-generator.js?v=2.0.0"></script>
-    <script src="js/nc1-viewer.js?v=2.0.0"></script>
-    <script src="js/app.js?v=2.0.0"></script>
+    <!-- Scripts (keep the ?v= version in sync across ALL of these on every
+         release so deployed users never get a mix of cached old and new files) -->
+    <script src="js/shapes-data.js?v=2.1.0"></script>
+    <script src="js/models.js?v=2.1.0"></script>
+    <script src="js/utils.js?v=2.1.0"></script>
+    <script src="js/nc1-generator.js?v=2.1.0"></script>
+    <script src="js/nc1-viewer.js?v=2.1.0"></script>
+    <script src="js/part-transform.js?v=2.1.0"></script>
+    <script src="js/part-history.js?v=2.1.0"></script>
+    <script src="js/app.js?v=2.1.0"></script>
 </body>
 </html>

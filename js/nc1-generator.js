@@ -1,7 +1,7 @@
 /**
  * NC1 Converter - DSTV/NC1 File Generator
  * Generates NC1 files compliant with DSTV standard
- * Version: 2.0.0
+ * Version: 2.1.0
  */
 
 class NC1Generator {
@@ -10,7 +10,7 @@ class NC1Generator {
         this.INCH_TO_MM = 25.4;
         // Polyline segments used to trace a corner fillet arc
         this.FILLET_SEGMENTS = 8;
-        console.log('NC1Generator v2.0.0 loaded');
+        console.log('NC1Generator v2.1.0 loaded');
     }
     
     /**
@@ -689,6 +689,13 @@ class NC1Generator {
             width: n.width * scale,
             depth: n.depth * scale
         })).sort((a, b) => a.x - b.x);
+
+        // Web notches cut from the far-flange (y=0) edge of the web
+        const webFarNotches = (notches || []).filter(n => n.location === 'web_far').map(n => ({
+            x: n.x * scale,
+            width: n.width * scale,
+            depth: n.depth * scale
+        })).sort((a, b) => a.x - b.x);
         
         // Process copes
         const processedCopes = (copes || []).map(c => ({
@@ -704,23 +711,29 @@ class NC1Generator {
         // o-flange side - so the web cope also cuts the near flange (o) back
         // for the same length (otherwise it would be left floating).
         const leftNearCope = processedCopes.find(c => c.end === 'left' && (c.location === 'near_flange' || c.location === 'both' || c.location === 'web'));
-        const leftFarCope = processedCopes.find(c => c.end === 'left' && (c.location === 'far_flange' || c.location === 'both'));
+        const leftFarCope = processedCopes.find(c => c.end === 'left' && (c.location === 'far_flange' || c.location === 'both' || c.location === 'web_far'));
         const rightNearCope = processedCopes.find(c => c.end === 'right' && (c.location === 'near_flange' || c.location === 'both' || c.location === 'web'));
-        const rightFarCope = processedCopes.find(c => c.end === 'right' && (c.location === 'far_flange' || c.location === 'both'));
+        const rightFarCope = processedCopes.find(c => c.end === 'right' && (c.location === 'far_flange' || c.location === 'both' || c.location === 'web_far'));
 
         // Web copes integrated into the v-face contour (only on ends without
-        // a miter - a miter on the same end keeps the cope on the generic path)
+        // a miter - a miter on the same end keeps the cope on the generic path).
+        // 'web' cuts from the near-flange (y=h) edge, 'web_far' from the
+        // far-flange (y=0) edge - the mirror image used for opposite-hand parts.
         const leftWebCope = (!leftIsWebMiter && !leftIsFlangeMiter)
             ? processedCopes.find(c => c.end === 'left' && c.location === 'web') : null;
         const rightWebCope = (!rightIsWebMiter && !rightIsFlangeMiter)
             ? processedCopes.find(c => c.end === 'right' && c.location === 'web') : null;
+        const leftWebFarCope = (!leftIsWebMiter && !leftIsFlangeMiter)
+            ? processedCopes.find(c => c.end === 'left' && c.location === 'web_far') : null;
+        const rightWebFarCope = (!rightIsWebMiter && !rightIsFlangeMiter)
+            ? processedCopes.find(c => c.end === 'right' && c.location === 'web_far') : null;
 
         // A flange cope shallower than the flange width cuts a depth x length
         // notch from the toe edge (fillet at the interior corner) instead of
         // removing the whole flange. Full cutback still applies when the depth
         // covers the flange, for web-location copes (the flange strip along
         // the cut web edge must be freed), and on mitered ends.
-        const isPartialFlangeCope = (c) => !!c && c.location !== 'web' && c.depth > 0 && c.depth < w;
+        const isPartialFlangeCope = (c) => !!c && c.location !== 'web' && c.location !== 'web_far' && c.depth > 0 && c.depth < w;
         const oLeftPartial = (!leftIsFlangeMiter && !leftIsWebMiter && isPartialFlangeCope(leftNearCope)) ? leftNearCope : null;
         const oRightPartial = (!rightIsFlangeMiter && !rightIsWebMiter && isPartialFlangeCope(rightNearCope)) ? rightNearCope : null;
         const uLeftPartial = (!leftIsFlangeMiter && !leftIsWebMiter && isPartialFlangeCope(leftFarCope)) ? leftFarCope : null;
@@ -761,9 +774,43 @@ class NC1Generator {
             vRightFar = length;
         }
         
-        // Web contour: Y=0 is near side, Y=h is far side
-        block += this.formatAKLine('v', vLeftNear, 'u', 0);
-        block += this.formatAKLine('', vRightNear, '', 0);
+        // Web contour: Y=0 is the far-flange (u) edge, Y=h the near-flange (o) edge
+        const vStartY = leftWebFarCope ? leftWebFarCope.depth : 0;
+        block += this.formatAKLine('v', vLeftNear, 'u', vStartY);
+
+        if (leftWebFarCope) {
+            // Left-end far-side web cope: run at depth, fillet, step down to y=0
+            const lfr = leftWebFarCope.radius || 0;
+            if (lfr > 0) {
+                block += this.formatFilletArc(leftWebFarCope.length - lfr, leftWebFarCope.depth - lfr, lfr, 90);
+            } else {
+                block += this.formatAKLine('', leftWebFarCope.length, '', leftWebFarCope.depth);
+            }
+            block += this.formatAKLine('', leftWebFarCope.length, '', 0);
+        }
+
+        // Far-side web notches (left to right along the y=0 edge)
+        for (const notch of webFarNotches) {
+            block += this.formatAKLine('', notch.x, '', 0);
+            block += this.formatAKLine('', notch.x, '', notch.depth);
+            block += this.formatAKLine('', notch.x + notch.width, '', notch.depth);
+            block += this.formatAKLine('', notch.x + notch.width, '', 0);
+        }
+
+        if (rightWebFarCope) {
+            // Right-end far-side web cope: step up at the cope length, fillet,
+            // run at depth to the right end
+            block += this.formatAKLine('', length - rightWebFarCope.length, '', 0);
+            const rfr = rightWebFarCope.radius || 0;
+            if (rfr > 0) {
+                block += this.formatFilletArc(length - rightWebFarCope.length + rfr, rightWebFarCope.depth - rfr, rfr, 180);
+            } else {
+                block += this.formatAKLine('', length - rightWebFarCope.length, '', rightWebFarCope.depth);
+            }
+            block += this.formatAKLine('', vRightNear, '', rightWebFarCope.depth);
+        } else {
+            block += this.formatAKLine('', vRightNear, '', 0);
+        }
 
         if (rightWebCope) {
             // Right-end web cope: rise only to h-depth, step in, then up to
@@ -803,10 +850,10 @@ class NC1Generator {
                 block += this.formatAKLine('', leftWebCope.length, '', h - leftWebCope.depth);
             }
             block += this.formatAKLine('', vLeftFar, '', h - leftWebCope.depth);
-            block += this.formatAKLine('', vLeftNear, '', 0);
+            block += this.formatAKLine('', vLeftNear, '', vStartY);
         } else {
             block += this.formatAKLine('', vLeftFar, '', h);
-            block += this.formatAKLine('', vLeftNear, '', 0);
+            block += this.formatAKLine('', vLeftNear, '', vStartY);
         }
         
         // ========== o-face (near flange) ==========
@@ -2226,7 +2273,7 @@ class NC1Generator {
         const rightHasMiter = !!part.operations.find(op => op.type === 'endConditionRight' && op.cutType === 'miter');
         const notches = (isHSS || isChannel) ? [] : part.operations.filter(op => op.type === 'notch');
         const copesToProcess = isHSS ? [] :
-            isChannel ? copes.filter(c => c.location === 'web' &&
+            isChannel ? copes.filter(c => (c.location === 'web' || c.location === 'web_far') &&
                 (c.end === 'left' ? leftHasMiter : rightHasMiter)) : copes;
         
         // Generate hole blocks (BO)
@@ -2462,7 +2509,7 @@ class NC1Generator {
             // Determine face based on cope location
             let face = 'o';  // Top
             if (cope.location === 'bottom') face = 'u';
-            if (cope.location === 'web') face = 'v';
+            if (cope.location === 'web' || cope.location === 'web_far') face = 'v';
 
             // The operation form saves 'left'/'right'; older data may say 'start'/'end'
             const atStart = cope.end === 'start' || cope.end === 'left';

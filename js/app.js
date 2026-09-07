@@ -22,7 +22,8 @@ class NC1ConverterApp {
         
         // Initialize UI
         this.updateUI();
-        
+        this.renderHistory();
+
         // Verify initialization
         console.log('NC1 Converter initialized');
         console.log('Shape data loaded:', this.shapesData ? 'YES' : 'NO');
@@ -126,7 +127,50 @@ class NC1ConverterApp {
         if (clearBtn) {
             clearBtn.addEventListener('click', () => this.clearCurrentPart());
         }
-        
+
+        // Sidebar: history, mirror, duplicate, import/export
+        const bind = (id, fn) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', fn);
+        };
+        bind('saveToHistory', () => {
+            if (!this.currentPart.shape.profileType) {
+                this.showMessage('Select a shape before saving', 'error');
+                return;
+            }
+            this.rememberPart();
+            this.showMessage('Saved to Recent Parts', 'success');
+        });
+        bind('mirrorEnds', () => this.applyMirror('ends'));
+        bind('mirrorNearFar', () => this.applyMirror('nearFar'));
+        bind('duplicatePart', () => this.duplicatePart());
+        bind('exportPart', () => this.exportPart());
+        bind('importPart', () => document.getElementById('importPartFile')?.click());
+        const importFile = document.getElementById('importPartFile');
+        if (importFile) {
+            importFile.addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (file) this.importPart(file);
+                e.target.value = '';
+            });
+        }
+        const historyList = document.getElementById('historyList');
+        if (historyList) {
+            historyList.addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-action]');
+                if (!btn) return;
+                const item = btn.closest('.history-item');
+                const id = item && item.dataset.id;
+                if (!id) return;
+                if (btn.dataset.action === 'load') {
+                    this.loadFromHistory(id);
+                } else if (btn.dataset.action === 'delete') {
+                    PartHistory.remove(id);
+                    this.renderHistory();
+                }
+            });
+        }
+
         // Operation type select in modal
         const opTypeSelect = document.getElementById('operationType');
         if (opTypeSelect) {
@@ -1743,7 +1787,8 @@ class NC1ConverterApp {
                             <option value="near_flange">Near Flange (o-face)</option>
                             <option value="far_flange">Far Flange (u-face)</option>
                             <option value="both">Both Flanges</option>
-                            <option value="web">Web (v-face, top)</option>
+                            <option value="web">Web (v-face), from near flange side</option>
+                            <option value="web_far">Web (v-face), from far flange side</option>
                 ` : `
                             <option value="top">Top</option>
                             <option value="bottom">Bottom</option>
@@ -1916,7 +1961,8 @@ class NC1ConverterApp {
                     notchFaceOptions = `
                         <option value="near_flange">Near Flange (o-face)</option>
                         <option value="far_flange">Far Flange (u-face)</option>
-                        <option value="web">Web (v-face, top)</option>
+                        <option value="web">Web (v-face), from near flange side</option>
+                        <option value="web_far">Web (v-face), from far flange side</option>
                     `;
                     notchHelperText = '<small class="text-muted">Channel loaded with toes down, web up</small>';
                 } else {
@@ -2420,7 +2466,8 @@ class NC1ConverterApp {
         if (!previewContainer) return;
         
         const validation = this.currentPart.validate();
-        
+        this.updateCurrentPartSummary();
+
         // Always update the part preview diagram (wrapped in try-catch)
         try {
             this.updatePartPreview();
@@ -2658,6 +2705,7 @@ class NC1ConverterApp {
             const nc1Content = this.generator.generate(this.currentPart);
             const filename = this.generator.generateFilename(this.currentPart);
             Utils.downloadFile(nc1Content, filename);
+            this.rememberPart();
             this.showMessage(`Downloaded ${filename}`, 'success');
         } catch (error) {
             this.showMessage('Error generating NC1: ' + error.message, 'error');
@@ -2667,6 +2715,7 @@ class NC1ConverterApp {
     copyNC1ToClipboard() {
         const nc1Preview = document.getElementById('nc1Preview');
         if (nc1Preview && nc1Preview.textContent && !nc1Preview.textContent.includes('Complete part definition')) {
+            this.rememberPart();
             navigator.clipboard.writeText(nc1Preview.textContent).then(() => {
                 this.showMessage('NC1 copied to clipboard', 'success');
             }).catch(() => {
@@ -2728,6 +2777,231 @@ class NC1ConverterApp {
     updateUI() {
         this.updateOperationsList();
         this.updatePreview();
+    }
+
+    // ========== Recall, mirror, duplicate, import/export ==========
+
+    /**
+     * Make a Part current and rebuild every form field from it. Used by
+     * history recall, mirror, duplicate and JSON import. Sets DOM values
+     * directly (no change events) so the shape-type handler does not wipe
+     * the operations.
+     */
+    loadPart(part) {
+        this.currentPart = part;
+        this.editingOperationId = null;
+        this.nc1ViewFace = null;
+
+        const set = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.value = (value === null || value === undefined) ? '' : value;
+        };
+
+        const type = part.shape.profileType || '';
+        set('shapeType', type);
+
+        const sizeSelect = document.getElementById('shapeSize');
+        if (type) {
+            this.populateSizeDropdown(type);
+            const designation = part.shape.designation || '';
+            if (sizeSelect && designation) {
+                sizeSelect.value = designation;
+                if (sizeSelect.value !== designation) {
+                    // Size not in the database (renamed or custom): keep the saved one
+                    const opt = document.createElement('option');
+                    opt.value = designation;
+                    opt.textContent = designation;
+                    opt.dataset.dims = JSON.stringify(part.shape.dimensions || {});
+                    sizeSelect.appendChild(opt);
+                    sizeSelect.value = designation;
+                }
+            }
+            this.updateShapeDiagram(type, part.shape.dimensions);
+        } else {
+            if (sizeSelect) sizeSelect.innerHTML = '<option value="">Select shape type first...</option>';
+            this.updateShapeDiagram(null);
+        }
+
+        set('partMark', part.partMark || '');
+        set('partQty', part.quantity || 1);
+        set('partLength', this.formatLengthForInput(part.length));
+
+        // FLAT custom part definition. updatePartDefinition() rebuilds the
+        // definition from the form on every corner change, so snapshot the
+        // saved definition first and fill the form from the snapshot.
+        const customCheckbox = document.getElementById('customPartCheckbox');
+        const card = document.getElementById('partDefinitionCard');
+        const clipCheckbox = document.getElementById('clipHolesToContour');
+        const clipInputs = document.getElementById('clipCircleInputs');
+        const saved = (type === 'FLAT' && part.partDefinition)
+            ? JSON.parse(JSON.stringify(part.partDefinition)) : null;
+
+        if (type === 'FLAT') this.showCustomPartCheckbox(); else this.hideCustomPartCheckbox();
+
+        if (saved) {
+            if (customCheckbox) customCheckbox.checked = true;
+            if (card) card.classList.remove('hidden');
+            set('partDefWidth', saved.partWidth || '');
+            set('partDefLength', saved.partLength || '');
+            if (clipCheckbox) clipCheckbox.checked = !!saved.clipHolesToContour;
+            if (clipInputs) clipInputs.classList.toggle('hidden', !saved.clipHolesToContour);
+            const cc = saved.clipHolesToContour ? saved.clipCircle : null;
+            set('clipCircleDiameter', cc ? cc.diameter : '');
+            set('clipCircleX', cc ? cc.x : '');
+            set('clipCircleY', cc ? cc.y : '');
+            const corners = saved.corners || {};
+            ['nearLeft', 'farLeft', 'nearRight', 'farRight'].forEach(corner => {
+                const key = corner.charAt(0).toUpperCase() + corner.slice(1);
+                const c = corners[corner] || { type: 'square', dimX: 0, dimY: 0 };
+                set(`corner${key}`, c.type || 'square');
+                this.updateCornerInput(corner);   // shows/hides the dimension inputs
+                if (c.type && c.type !== 'square') {
+                    set(`corner${key}DimX`, c.dimX || '');
+                    if (c.type !== 'chamfer') set(`corner${key}DimY`, c.dimY || '');
+                }
+            });
+            this.updatePartDefinition();   // final rebuild from the fully filled form
+        } else {
+            if (customCheckbox) customCheckbox.checked = false;
+            if (card) card.classList.add('hidden');
+            if (clipCheckbox) clipCheckbox.checked = false;
+            if (clipInputs) clipInputs.classList.add('hidden');
+            part.partDefinition = null;
+        }
+
+        this.updateOperationsList();
+        this.updatePreview();
+    }
+
+    /** Length as the user would type it in the current unit mode. */
+    formatLengthForInput(inches) {
+        if (!inches) return '';
+        if (this.unitMode === 'feet-inches') return Utils.toFeetInches(inches);
+        return String(Math.round(inches * 10000) / 10000);
+    }
+
+    updateCurrentPartSummary() {
+        const el = document.getElementById('currentPartSummary');
+        if (!el) return;
+        const p = this.currentPart;
+        if (!p.shape.profileType && !p.partMark) {
+            el.textContent = 'No part defined';
+            return;
+        }
+        const bits = [];
+        if (p.partMark) bits.push(p.partMark);
+        if (p.shape.designation) bits.push(p.shape.designation);
+        if (p.length) bits.push(this.formatLengthForInput(p.length) + (this.unitMode === 'feet-inches' ? '' : '"'));
+        bits.push(p.operations.length + (p.operations.length === 1 ? ' op' : ' ops'));
+        el.textContent = bits.join(' | ');
+    }
+
+    /** Save the current part to Recent Parts (replaces an entry with the same id). */
+    rememberPart() {
+        if (PartHistory.add(this.currentPart)) this.renderHistory();
+    }
+
+    renderHistory() {
+        const list = document.getElementById('historyList');
+        if (!list) return;
+        const entries = PartHistory.list();
+        if (entries.length === 0) {
+            list.innerHTML = '<div class="text-muted text-sm">No saved parts yet.</div>';
+            return;
+        }
+        list.innerHTML = entries.map(e => {
+            const p = e.part || {};
+            const shape = (p.shape && (p.shape.designation || p.shape.profileType)) || '';
+            const len = p.length ? this.formatLengthForInput(p.length) + (this.unitMode === 'feet-inches' ? '' : '"') : '';
+            const ops = Array.isArray(p.operations) ? p.operations.length + ' ops' : '';
+            const when = e.savedAt ? new Date(e.savedAt).toLocaleDateString() : '';
+            const detail = [shape, len, ops].filter(Boolean).join(' - ');
+            return `
+                <div class="history-item" data-id="${this.escapeHtml(p.id || '')}">
+                    <div class="history-info">
+                        <div class="history-mark">${this.escapeHtml(p.partMark || '(no mark)')}</div>
+                        <div class="history-detail">${this.escapeHtml(detail)}<br>${this.escapeHtml(when)}</div>
+                    </div>
+                    <div class="history-actions">
+                        <button class="btn btn-sm btn-primary" data-action="load" title="Load this part into the form">Load</button>
+                        <button class="btn btn-sm btn-danger" data-action="delete" title="Remove from Recent Parts">X</button>
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    loadFromHistory(id) {
+        const data = PartHistory.get(id);
+        if (!data) {
+            this.showMessage('That part is no longer in history', 'error');
+            this.renderHistory();
+            return;
+        }
+        this.loadPart(Part.fromJSON(JSON.parse(JSON.stringify(data))));
+        this.showMessage(`Loaded ${this.currentPart.partMark || 'part'} - edit and download again to update it`, 'info');
+    }
+
+    /** kind: 'ends' (swap left/right) or 'nearFar' (swap near/far sides) */
+    applyMirror(kind) {
+        if (!this.currentPart.shape.profileType) {
+            this.showMessage('Select a shape before mirroring', 'error');
+            return;
+        }
+        const result = kind === 'nearFar'
+            ? PartTransform.flipNearFar(this.currentPart)
+            : PartTransform.mirrorEnds(this.currentPart);
+        result.warnings.forEach(w => this.showMessage(w, 'error'));
+        if (!result.part) return;
+        this.loadPart(result.part);
+        this.showMessage(kind === 'nearFar'
+            ? 'Mirrored: near and far sides swapped. Rename the part mark as needed.'
+            : 'Mirrored: left and right ends swapped. Rename the part mark as needed.', 'info');
+    }
+
+    duplicatePart() {
+        if (!this.currentPart.shape.profileType) {
+            this.showMessage('Select a shape before duplicating', 'error');
+            return;
+        }
+        this.loadPart(PartTransform.duplicate(this.currentPart));
+        this.showMessage('Duplicated. Rename the part mark as needed.', 'info');
+    }
+
+    exportPart() {
+        if (!this.currentPart.shape.profileType) {
+            this.showMessage('Select a shape before exporting', 'error');
+            return;
+        }
+        const json = JSON.stringify(this.currentPart.toJSON(), null, 2);
+        const name = Utils.sanitizeFilename(this.currentPart.partMark || 'part') + '.part.json';
+        Utils.downloadFile(json, name, 'application/json');
+        this.showMessage(`Exported ${name}`, 'success');
+    }
+
+    importPart(file) {
+        Utils.readFileAsText(file).then(text => {
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                this.showMessage('That file is not valid JSON', 'error');
+                return;
+            }
+            if (!data || !data.shape || !data.shape.profileType) {
+                this.showMessage('That file is not an NC1 Converter part', 'error');
+                return;
+            }
+            const part = Part.fromJSON(data);
+            if (!part.id) part.id = part.generateId();
+            this.loadPart(part);
+            this.showMessage(`Imported ${part.partMark || file.name}`, 'success');
+        }).catch(() => this.showMessage('Could not read that file', 'error'));
+    }
+
+    escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, ch => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[ch]));
     }
     
     showMessage(text, type = 'info') {

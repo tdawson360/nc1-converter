@@ -215,6 +215,7 @@ class Part {
         newPart.quantity = this.quantity;
         newPart.shape = JSON.parse(JSON.stringify(this.shape));
         newPart.length = this.length;
+        newPart.partDefinition = this.partDefinition ? JSON.parse(JSON.stringify(this.partDefinition)) : null;
         newPart.operations = JSON.parse(JSON.stringify(this.operations));
         newPart.notes = this.notes;
         newPart.source = { ...this.source };
@@ -230,6 +231,7 @@ class Part {
             source: this.source,
             shape: this.shape,
             length: this.length,
+            partDefinition: this.partDefinition,
             operations: this.operations,
             notes: this.notes,
             createdDate: this.createdDate,

@@ -8,6 +8,8 @@ A web-based tool for generating DSTV/NC1 files used in steel fabrication CNC ope
 - **Operations:** End conditions, holes, slots, copes, notches, miters
 - **Real-time Preview:** Part views rendered directly from the generated NC1 output (per face), plus end view
 - **NC1 Output:** Preview, copy, and download NC1 files
+- **Recall and Mirror:** Recent Parts history (this browser), Export/Import a part as JSON,
+  Duplicate, Mirror: Swap Ends, Mirror: Flip Near/Far (opposite-hand stair stringers)
 
 ## Local Development
 
@@ -32,4 +34,4 @@ This is a static site ready for deployment on Vercel, Netlify, or any static hos
 
 ## Version
 
-v2.0.0
+v2.1.0
